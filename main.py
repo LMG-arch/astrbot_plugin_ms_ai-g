@@ -13,12 +13,12 @@
 - 智能绘画判断功能，聊天过程中自动识别绘画机会
 - 支持AI大语言模型智能判断，符合OpenAI格式
 
-版本：1.0
+版本：1.03
 """
 
 from astrbot.api.message_components import Plain, Image
 from astrbot.api.event import AstrMessageEvent
-from astrbot.api.event.filter import command, llm_tool, message
+from astrbot.api.event.filter import command, llm_tool
 from astrbot.api.star import Context, Star, register
 import aiohttp
 import asyncio
@@ -695,7 +695,7 @@ class ModFlux(Star):
         
         return prompt
 
-    @message()
+    @command()
     async def auto_paint_check(self, event: AstrMessageEvent):
         """
         自动绘画检查 - 在聊天过程中智能判断是否应该生成图片
