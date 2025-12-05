@@ -13,7 +13,7 @@
 - 智能绘画判断功能，聊天过程中自动识别绘画机会
 - 支持AI大语言模型智能判断，符合OpenAI格式
 
-版本：1.05
+版本：1.06
 """
 
 from astrbot.api.message_components import Plain, Image
@@ -121,7 +121,7 @@ class ModFlux(Star):
 
         # 验证必要配置
         if not self.api_key:
-            raise ValueError("API密钥必须配置")
+            self.logger.warning("API密钥未配置，部分功能将受限。请前往插件配置页面设置API密钥。")
 
     async def _download_image(self, image_url: str) -> str:
         """
@@ -270,6 +270,10 @@ class ModFlux(Star):
             Exception: 网络请求或解析失败时抛出
         """
         try:
+            # 验证API密钥是否配置
+            if not self.api_key:
+                raise ValueError("API密钥未配置，请前往插件配置页面设置API密钥。")
+            
             # 验证提示词
             if not prompt:
                 raise ValueError("请提供提示词！")
