@@ -17,7 +17,8 @@
 """
 
 from astrbot.api.message_components import Plain, Image
-from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.event import AstrMessageEvent
+from astrbot.api.event.filter import command, llm_tool, message
 from astrbot.api.star import Context, Star, register
 import aiohttp
 import asyncio
@@ -290,7 +291,7 @@ class ModFlux(Star):
             # 其他异常直接抛出
             raise e
 
-    @filter.llm_tool(name="draw")
+    @llm_tool(name="draw")
     async def draw(self, event: AstrMessageEvent, prompt: str, size: str = "768x512"):
         '''
         LLM工具调用接口 - 根据提示词生成图片
@@ -333,7 +334,7 @@ class ModFlux(Star):
             # 异常处理，返回错误信息
             yield event.plain_result(f"生成图片时遇到问题: {str(e)}")
             
-    @filter.command("aiimg")
+    @command("aiimg")
     async def generate_image_command(self, event: AstrMessageEvent):
         """
         命令调用接口 - 通过/aiimg命令生成图片
@@ -392,7 +393,7 @@ class ModFlux(Star):
             # 异常处理，返回错误信息
             yield event.plain_result(f"\n生成图片失败: {str(e)}")
 
-    @filter.command("setcharacter")
+    @command("setcharacter")
     async def set_character_command(self, event: AstrMessageEvent):
         """
         命令调用接口 - 通过/setcharacter命令设置人物扮演形象
@@ -694,7 +695,7 @@ class ModFlux(Star):
         
         return prompt
 
-    @filter.message()
+    @message()
     async def auto_paint_check(self, event: AstrMessageEvent):
         """
         自动绘画检查 - 在聊天过程中智能判断是否应该生成图片
