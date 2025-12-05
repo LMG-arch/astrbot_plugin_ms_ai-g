@@ -85,35 +85,6 @@ class ModFlux(Star):
         # 人物扮演形象配置
         self.character_profile = config.get("default_character_profile", "")  # 从配置读取默认人物扮演形象描述
         
-        def _update_conversation_cache(self, content: str, role: str):
-            """
-            更新对话历史缓存
-            
-            Args:
-                content: 对话内容
-                role: 角色（用户/机器人）
-            """
-            # 添加新的对话记录
-            self.conversation_cache.append({
-                "role": role,
-                "content": content,
-                "timestamp": time.time()
-            })
-            
-            # 限制缓存大小，移除最旧的记录
-            if len(self.conversation_cache) > self.max_cache_size:
-                self.conversation_cache.pop(0)
-        
-        def set_character_profile(self, profile: str):
-            """
-            设置人物扮演形象描述
-            
-            Args:
-                profile: 人物扮演形象描述文本
-            """
-            self.character_profile = profile
-            print(f"已设置人物扮演形象：{profile}")
-        
         # 创建临时目录用于存储下载的图片
         temp_dir_name = config.get("temp_dir_name", "astrbot_images")  # 从配置读取临时目录名称
         self.temp_dir = Path(tempfile.gettempdir()) / temp_dir_name
@@ -122,6 +93,35 @@ class ModFlux(Star):
         # 验证必要配置
         if not self.api_key:
             print("警告: API密钥未配置，部分功能将受限。请前往插件配置页面设置API密钥。")
+
+    def _update_conversation_cache(self, content: str, role: str):
+        """
+        更新对话历史缓存
+        
+        Args:
+            content: 对话内容
+            role: 角色（用户/机器人）
+        """
+        # 添加新的对话记录
+        self.conversation_cache.append({
+            "role": role,
+            "content": content,
+            "timestamp": time.time()
+        })
+        
+        # 限制缓存大小，移除最旧的记录
+        if len(self.conversation_cache) > self.max_cache_size:
+            self.conversation_cache.pop(0)
+    
+    def set_character_profile(self, profile: str):
+        """
+        设置人物扮演形象描述
+        
+        Args:
+            profile: 人物扮演形象描述文本
+        """
+        self.character_profile = profile
+        print(f"已设置人物扮演形象：{profile}")
 
     async def _download_image(self, image_url: str) -> str:
         """
