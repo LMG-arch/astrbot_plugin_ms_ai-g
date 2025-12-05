@@ -1,6 +1,6 @@
 name: ms_ai-g
 desc: 接入魔搭社区文生图模型。支持LLM调用和命令调用。
 help: 可以自主判断是否生成绘画
-version: "1.06"
+version: "1.07"
 author: LMG-arch
 repo: https://github.com/LMG-arch/astrbot_plugin_ms_ai-g.git

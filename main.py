@@ -13,19 +13,19 @@
 - 智能绘画判断功能，聊天过程中自动识别绘画机会
 - 支持AI大语言模型智能判断，符合OpenAI格式
 
-版本：1.06
+版本：1.07
 """
 
 from astrbot.api.message_components import Plain, Image
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.event.filter import command, llm_tool
+from astrbot.api.event.filter import llm_tool
 from astrbot.api.star import Context, Star, register
+from astrbot.api import AstrBotConfig, logger
 import aiohttp
 import asyncio
 import random
 import json
 import base64
-import os
 import tempfile
 import re
 import time
@@ -33,7 +33,7 @@ from pathlib import Path
 
 
 # 注册插件到AstrBot系统
-@register(name="ms_ai-g", desc="接入魔搭社区文生图模型。支持LLM调用和命令调用。", version="1.0", author="LMG-arch")
+@register(name="ms_ai-g", desc="接入魔搭社区文生图模型。支持LLM调用和命令调用。", version="1.07", author="LMG-arch")
 class ModFlux(Star):
     """
     魔搭社区文生图插件主类
@@ -41,17 +41,20 @@ class ModFlux(Star):
     继承自AstrBot的Star基类，提供图像生成功能
     """
     
-    def __init__(self, context: Context, config: dict):
+    def __init__(self, context: Context, config: AstrBotConfig):
         """
         初始化插件
         
         Args:
             context: AstrBot上下文对象
-            config: 插件配置字典
+            config: 插件配置对象（AstrBotConfig）
         """
         super().__init__(context)
-        # 存储配置字典以便后续使用
+        # 存储配置对象以便后续使用
         self.config = config
+        
+        # 使用AstrBot提供的logger接口
+        self.logger = logger
         
         # 从配置中获取API相关参数
         self.api_key = config.get("api_key")  # API密钥
@@ -79,8 +82,14 @@ class ModFlux(Star):
         self.prompt_llm_model = config.get("prompt_llm_model", "gpt-3.5-turbo")  # 生成提示词的LLM模型名称
         
         # 对话历史缓存（用于基于上下文的提示词生成）
-        self.conversation_cache = []
         self.max_cache_size = config.get("max_cache_size", 10)  # 从配置读取最大缓存对话条数
+        
+        # 创建数据存储目录
+        self.data_dir = Path(__file__).parent / "data"
+        self.data_dir.mkdir(exist_ok=True)
+        
+        # 初始化对话缓存（从文件加载）
+        self.conversation_cache = self._load_conversation_cache()
         
         # 人物扮演形象配置
         self.character_profile = config.get("default_character_profile", "")  # 从配置读取默认人物扮演形象描述
@@ -92,7 +101,38 @@ class ModFlux(Star):
 
         # 验证必要配置
         if not self.api_key:
-            print("警告: API密钥未配置，部分功能将受限。请前往插件配置页面设置API密钥。")
+            self.logger.warning("API密钥未配置，部分功能将受限。请前往插件配置页面设置API密钥。")
+
+    def _load_conversation_cache(self) -> list:
+        """
+        从文件加载对话历史缓存
+        
+        Returns:
+            list: 对话历史缓存列表
+        """
+        cache_file = self.data_dir / "conversation_cache.json"
+        try:
+            if cache_file.exists():
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    cache_data = json.load(f)
+                self.logger.info(f"[缓存加载] 成功加载对话缓存，共 {len(cache_data)} 条记录")
+                return cache_data
+        except Exception as e:
+            self.logger.warning(f"[缓存加载] 加载对话缓存失败: {str(e)}")
+        
+        return []
+
+    def _save_conversation_cache(self):
+        """
+        保存对话历史缓存到文件
+        """
+        cache_file = self.data_dir / "conversation_cache.json"
+        try:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(self.conversation_cache, f, ensure_ascii=False, indent=2)
+            self.logger.debug("[缓存保存] 对话缓存已保存到文件")
+        except Exception as e:
+            self.logger.warning(f"[缓存保存] 保存对话缓存失败: {str(e)}")
 
     def _update_conversation_cache(self, content: str, role: str):
         """
@@ -112,6 +152,9 @@ class ModFlux(Star):
         # 限制缓存大小，移除最旧的记录
         if len(self.conversation_cache) > self.max_cache_size:
             self.conversation_cache.pop(0)
+        
+        # 保存更新后的缓存
+        self._save_conversation_cache()
     
     def set_character_profile(self, profile: str):
         """
@@ -121,7 +164,7 @@ class ModFlux(Star):
             profile: 人物扮演形象描述文本
         """
         self.character_profile = profile
-        print(f"已设置人物扮演形象：{profile}")
+        self.logger.info(f"已设置人物扮演形象：{profile}")
 
     async def _download_image(self, image_url: str) -> str:
         """
@@ -149,11 +192,24 @@ class ModFlux(Star):
                         with open(file_path, "wb") as f:
                             f.write(image_data)
                         
+                        self.logger.debug(f"图片下载成功，保存路径: {file_path}")
                         return str(file_path)
                     else:
-                        raise Exception(f"下载图片失败，HTTP状态码: {response.status}")
+                        error_msg = f"下载图片失败，HTTP状态码: {response.status}"
+                        self.logger.error(error_msg)
+                        raise Exception(error_msg)
+        except aiohttp.ClientError as e:
+            error_msg = f"网络请求错误: {str(e)}"
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
+        except IOError as e:
+            error_msg = f"文件操作错误: {str(e)}"
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
         except Exception as e:
-            raise Exception(f"图片下载失败: {str(e)}")
+            error_msg = f"图片下载过程中发生未知错误: {str(e)}"
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
 
     async def _image_to_base64(self, image_url: str) -> str:
         """
@@ -170,11 +226,21 @@ class ModFlux(Star):
                 async with session.get(image_url) as response:
                     if response.status == 200:
                         image_data = await response.read()
-                        return base64.b64encode(image_data).decode('utf-8')
+                        base64_data = base64.b64encode(image_data).decode('utf-8')
+                        self.logger.debug(f"图片转base64成功，数据长度: {len(base64_data)}")
+                        return base64_data
                     else:
-                        raise Exception(f"获取图片数据失败，HTTP状态码: {response.status}")
+                        error_msg = f"获取图片数据失败，HTTP状态码: {response.status}"
+                        self.logger.error(error_msg)
+                        raise Exception(error_msg)
+        except aiohttp.ClientError as e:
+            error_msg = f"网络请求错误: {str(e)}"
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
         except Exception as e:
-            raise Exception(f"图片转base64失败: {str(e)}")
+            error_msg = f"图片转base64过程中发生错误: {str(e)}"
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
 
     async def _request_modelscope(self, prompt: str, size: str, session: aiohttp.ClientSession) -> str:
         """
@@ -324,21 +390,16 @@ class ModFlux(Star):
             # 调用图像生成API
             image_url = await self._request_image(prompt, size)
 
-            # 特殊的实例检查
-            if self is None:
-                yield event.plain_result("你还不够虔诚，所以没有得到佛祖的庇佑导致发生了错误")
-                return
-            
             # 方法1：下载图片到本地
             try:
                 local_image_path = await self._download_image(image_url)
                 chain = [Image.fromFile(local_image_path)]
-            except Exception as download_error:
+            except Exception:
                 # 方法1失败，尝试方法2：使用base64编码
                 try:
                     image_base64 = await self._image_to_base64(image_url)
                     chain = [Image.fromBase64(image_base64)]
-                except Exception as base64_error:
+                except Exception:
                     # 所有方法都失败，返回原始URL（可能会被平台拦截）
                     chain = [Image.fromURL(image_url)]
             
@@ -347,101 +408,6 @@ class ModFlux(Star):
         except Exception as e:
             # 异常处理，返回错误信息
             yield event.plain_result(f"生成图片时遇到问题: {str(e)}")
-            
-    @filter.command("aiimg")
-    async def generate_image_command(self, event: AstrMessageEvent, *args, **kwargs):
-        """
-        命令调用接口 - 通过/aiimg命令生成图片
-        
-        用户可以通过发送"/aiimg <提示词>"命令来生成图片
-        
-        Args:
-            event: AstrBot消息事件对象
-            *args: 额外的位置参数（为兼容性保留）
-            **kwargs: 额外的关键字参数（为兼容性保留）
-            
-        Yields:
-            AstrBot消息事件结果，包含生成的图片和提示词信息或错误信息
-        """
-        # 解析用户输入的命令和提示词
-        full_message = event.message_obj.message_str
-        parts = full_message.split(" ", 1)  # 分割命令和提示词
-        prompt = parts[1].strip() if len(parts) > 1 else ""
-
-        # 验证提示词是否为空
-        if not prompt:
-            yield event.plain_result("\n请提供提示词！使用方法：/aiimg <提示词>")
-            return
-
-        try:
-            # 生成随机种子
-            current_seed = random.randint(1, 2147483647)
-
-            # 调用图像生成API
-            image_url = await self._request_image(prompt, self.size)
-            
-            # 尝试多种方式发送图片
-            try:
-                # 方法1：下载图片到本地
-                local_image_path = await self._download_image(image_url)
-                chain = [
-                    Plain(f"提示词：{prompt}\n"),
-                    Image.fromFile(local_image_path)
-                ]
-            except Exception as download_error:
-                # 方法1失败，尝试方法2：使用base64编码
-                try:
-                    image_base64 = await self._image_to_base64(image_url)
-                    chain = [
-                        Plain(f"提示词：{prompt}\n"),
-                        Image.fromBase64(image_base64)
-                    ]
-                except Exception as base64_error:
-                    # 所有方法都失败，返回原始URL（可能会被平台拦截）
-                    chain = [
-                        Plain(f"提示词：{prompt}\n"),
-                        Image.fromURL(image_url)
-                    ]
-            
-            yield event.chain_result(chain)
-
-        except Exception as e:
-            # 异常处理，返回错误信息
-            yield event.plain_result(f"\n生成图片失败: {str(e)}")
-
-    @filter.command("setcharacter")
-    async def set_character_command(self, event: AstrMessageEvent, *args, **kwargs):
-        """
-        命令调用接口 - 通过/setcharacter命令设置人物扮演形象
-        
-        用户可以通过发送"/setcharacter <人物形象描述>"命令来设置人物扮演形象
-        
-        Args:
-            event: AstrBot消息事件对象
-            *args: 额外的位置参数（为兼容性保留）
-            **kwargs: 额外的关键字参数（为兼容性保留）
-            
-        Yields:
-            AstrBot消息事件结果，包含设置成功或失败信息
-        """
-        # 解析用户输入的命令和人物形象描述
-        full_message = event.message_obj.message_str
-        parts = full_message.split(" ", 1)  # 分割命令和人物形象描述
-        profile = parts[1].strip() if len(parts) > 1 else ""
-
-        # 验证人物形象描述是否为空
-        if not profile:
-            yield event.plain_result("\n请提供人物扮演形象描述！使用方法：/setcharacter <人物形象描述>")
-            return
-
-        try:
-            # 设置人物扮演形象
-            self.set_character_profile(profile)
-            yield event.plain_result(f"\n✅ 人物扮演形象设置成功！\n\n当前形象：{profile}\n\n后续生成的绘画提示词将基于此人物形象和对话内容进行创作。")
-
-        except Exception as e:
-            # 异常处理，返回错误信息
-            yield event.plain_result(f"\n设置人物扮演形象失败: {str(e)}")
 
     async def _should_paint(self, message: str) -> bool:
         """
@@ -451,36 +417,36 @@ class ModFlux(Star):
             message: 用户消息内容
             
         Returns:
-            bool: 是否触发绘画
+            bool: 是否应该绘画
         """
-        print(f"[绘图判断] 开始判断是否需要绘图，消息内容: {message}")
+        self.logger.debug(f"[绘图判断] 开始判断是否需要绘图，消息内容: {message}")
         
         # 检查时间间隔
         current_time = time.time()
         time_diff = current_time - self.last_paint_time
         if time_diff < self.min_paint_interval:
-            print(f"[绘图判断] 时间间隔不足，上次绘图时间: {self.last_paint_time}, 当前时间: {current_time}, 间隔: {time_diff:.2f}s")
+            self.logger.debug(f"[绘图判断] 时间间隔不足，上次绘图时间: {self.last_paint_time}, 当前时间: {current_time}, 间隔: {time_diff:.2f}s")
             return False
-        print(f"[绘图判断] 时间间隔满足条件")
+        self.logger.debug("[绘图判断] 时间间隔满足条件")
         
         # 检查概率触发
         rand_val = random.random()
         if rand_val > self.paint_probability:
-            print(f"[绘图判断] 概率未触发，随机值: {rand_val:.2f}, 触发概率: {self.paint_probability:.2f}")
+            self.logger.debug(f"[绘图判断] 概率未触发，随机值: {rand_val:.2f}, 触发概率: {self.paint_probability:.2f}")
             return False
-        print(f"[绘图判断] 概率触发条件满足")
+        self.logger.debug("[绘图判断] 概率触发条件满足")
         
         # 如果启用了LLM智能判断，优先使用LLM判断
         if self.enable_llm_judge and self.judge_llm_api_url and self.judge_llm_api_key:
-            print("[绘图判断] 使用LLM智能判断")
+            self.logger.debug("[绘图判断] 使用LLM智能判断")
             result = await self._llm_judge_should_paint(message)
-            print(f"[绘图判断] LLM判断结果: {result}")
+            self.logger.debug(f"[绘图判断] LLM判断结果: {result}")
             return result
         
         # 否则使用传统的关键词匹配方法
-        print("[绘图判断] 使用关键词匹配方法")
+        self.logger.debug("[绘图判断] 使用关键词匹配方法")
         result = await self._keyword_judge_should_paint(message)
-        print(f"[绘图判断] 关键词匹配结果: {result}")
+        self.logger.debug(f"[绘图判断] 关键词匹配结果: {result}")
         return result
 
 
@@ -496,7 +462,7 @@ class ModFlux(Star):
             bool: 是否触发绘画
         """
         try:
-            print(f"[LLM绘图判断] 开始使用LLM判断是否需要绘图，消息内容: {message}")
+            self.logger.debug(f"[LLM绘图判断] 开始使用LLM判断是否需要绘图，消息内容: {message}")
             
             # 构建LLM判断请求
             prompt = f"""请分析以下用户消息内容，判断是否适合生成一幅画作。
@@ -529,7 +495,7 @@ class ModFlux(Star):
                 "temperature": 0.1  # 固定温度参数
             }
             
-            print(f"[LLM绘图判断] 发送LLM请求...")
+            self.logger.debug("[LLM绘图判断] 发送LLM请求...")
             
             # 发送LLM请求
             async with aiohttp.ClientSession() as session:
@@ -537,23 +503,23 @@ class ModFlux(Star):
                     if response.status == 200:
                         result = await response.json()
                         llm_response = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip().lower()
-                        print(f"[LLM绘图判断] LLM响应内容: {llm_response}")
+                        self.logger.debug(f"[LLM绘图判断] LLM响应内容: {llm_response}")
                         
                         # 解析LLM响应
                         if "是" in llm_response or "yes" in llm_response or "true" in llm_response:
-                            print("[LLM绘图判断] LLM判断结果: 是")
+                            self.logger.debug("[LLM绘图判断] LLM判断结果: 是")
                             return True
                         else:
-                            print("[LLM绘图判断] LLM判断结果: 否")
+                            self.logger.debug("[LLM绘图判断] LLM判断结果: 否")
                             return False
                     else:
                         # LLM请求失败，回退到关键词判断
-                        print(f"[LLM绘图判断] LLM请求失败，状态码：{response.status}，回退到关键词判断")
+                        self.logger.warning(f"[LLM绘图判断] LLM请求失败，状态码：{response.status}，回退到关键词判断")
                         return await self._keyword_judge_should_paint(message)
                         
         except Exception as e:
             # LLM判断异常，回退到关键词判断
-            print(f"[LLM绘图判断] LLM判断异常：{str(e)}，回退到关键词判断")
+            self.logger.warning(f"[LLM绘图判断] LLM判断异常：{str(e)}，回退到关键词判断")
             return await self._keyword_judge_should_paint(message)
 
     async def _keyword_judge_should_paint(self, message: str) -> bool:
@@ -566,7 +532,7 @@ class ModFlux(Star):
         Returns:
             bool: 是否触发绘画
         """
-        print(f"[关键词绘图判断] 开始使用关键词匹配判断是否需要绘图，消息内容: {message}")
+        self.logger.debug(f"[关键词绘图判断] 开始使用关键词匹配判断是否需要绘图，消息内容: {message}")
         
         # 检查消息内容是否包含绘画相关关键词
         paint_keywords = [
@@ -577,16 +543,16 @@ class ModFlux(Star):
         
         # 检查消息长度，过短的消息不触发
         if len(message.strip()) < 10:  # 固定最小消息长度
-            print(f"[关键词绘图判断] 消息长度不足，长度: {len(message.strip())}")
+            self.logger.debug(f"[关键词绘图判断] 消息长度不足，长度: {len(message.strip())}")
             return False
-        print(f"[关键词绘图判断] 消息长度满足条件")
+        self.logger.debug("[关键词绘图判断] 消息长度满足条件")
         
         # 检查是否包含绘画关键词
         for keyword in paint_keywords:
             if keyword in message:
-                print(f"[关键词绘图判断] 匹配到关键词: {keyword}")
+                self.logger.debug(f"[关键词绘图判断] 匹配到关键词: {keyword}")
                 return True
-        print("[关键词绘图判断] 未匹配到任何关键词")
+        self.logger.debug("[关键词绘图判断] 未匹配到任何关键词")
         
         # 检查是否包含描述性内容（形容词+名词的组合）
         descriptive_patterns = [
@@ -597,11 +563,11 @@ class ModFlux(Star):
         
         for pattern in descriptive_patterns:
             if re.search(pattern, message):
-                print(f"[关键词绘图判断] 匹配到描述性模式: {pattern}")
+                self.logger.debug(f"[关键词绘图判断] 匹配到描述性模式: {pattern}")
                 return True
-        print("[关键词绘图判断] 未匹配到任何描述性模式")
+        self.logger.debug("[关键词绘图判断] 未匹配到任何描述性模式")
         
-        print("[关键词绘图判断] 关键词匹配结果: 否")
+        self.logger.debug("[关键词绘图判断] 关键词匹配结果: 否")
         return False
 
     async def _generate_paint_prompt(self, message: str, conversation_history: list = None) -> str:
@@ -615,22 +581,22 @@ class ModFlux(Star):
         Returns:
             str: 生成的绘画提示词
         """
-        print(f"[提示词生成] 开始生成绘画提示词，消息内容: {message}")
+        self.logger.debug(f"[提示词生成] 开始生成绘画提示词，消息内容: {message}")
         
         # 如果启用了LLM智能判断且有生成提示词的大模型配置，优先使用AI模型生成提示词
         if self.enable_llm_judge and self.prompt_llm_api_url and self.prompt_llm_api_key:
-            print("[提示词生成] 使用LLM生成提示词")
+            self.logger.debug("[提示词生成] 使用LLM生成提示词")
             try:
                 result = await self._llm_generate_paint_prompt(message, conversation_history)
-                print(f"[提示词生成] LLM生成提示词完成: {result}")
+                self.logger.debug(f"[提示词生成] LLM生成提示词完成: {result}")
                 return result
             except Exception as e:
-                print(f"[提示词生成] AI提示词生成失败，使用传统方法：{str(e)}")
+                self.logger.warning(f"[提示词生成] AI提示词生成失败，使用传统方法：{str(e)}")
         
         # 使用传统方法生成提示词
-        print("[提示词生成] 使用传统方法生成提示词")
+        self.logger.debug("[提示词生成] 使用传统方法生成提示词")
         result = await self._traditional_generate_paint_prompt(message)
-        print(f"[提示词生成] 传统方法生成提示词完成: {result}")
+        self.logger.debug(f"[提示词生成] 传统方法生成提示词完成: {result}")
         return result
 
     async def _llm_generate_paint_prompt(self, message: str, conversation_history: list = None) -> str:
@@ -644,23 +610,19 @@ class ModFlux(Star):
         Returns:
             str: 生成的绘画提示词
         """
-        print(f"[LLM提示词生成] 开始使用LLM生成提示词，消息内容: {message}")
+        # 构建对话上下文
+        context = ""
+        if conversation_history and len(conversation_history) > 0:
+            # 取最近的对话记录
+            recent_history = conversation_history[-5:]  # 最近5条对话
+            context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in recent_history])
+            self.logger.info(f"[LLM提示词生成] 对话历史: {context}")
         
-        # 构建对话上下文 - 基于消息接收者（人物扮演）的视角
-        context = message
-        if conversation_history:
-            # 合并对话历史，保留最近的几条对话
-            recent_count = 5  # 固定最近对话保留条数
-            recent_history = conversation_history[-recent_count:]  # 保留最近5条对话
-            history_text = "\n".join([f"{item.get('role', '用户')}: {item.get('content', '')}" for item in recent_history])
-            context = f"对话历史：\n{history_text}\n\n当前消息：{message}"
-            print(f"[LLM提示词生成] 对话历史: {context}")
-        
-        # 添加人物扮演形象信息 - 这是消息接收者的视角
+        # 添加人物扮演信息
         character_context = ""
-        if self.character_profile:
+        if hasattr(self, 'character_profile') and self.character_profile:
             character_context = f"\n人物扮演形象（消息接收者的视角）：\n{self.character_profile}\n"
-            print(f"[LLM提示词生成] 人物扮演形象: {self.character_profile}")
+            self.logger.info(f"[LLM提示词生成] 人物扮演形象: {self.character_profile}")
         
         # 构建LLM提示词生成请求 - 强调基于消息接收者视角
         prompt = f"""请根据以下对话上下文和人物扮演形象（消息接收者的视角），生成一个与当前对话情境高度契合的AI绘画提示词。
@@ -693,40 +655,46 @@ class ModFlux(Star):
         payload = {
             "model": self.prompt_llm_model,
             "messages": [
-                {"role": "system", "content": "你是一个专业的对话情境绘画提示词生成助手。你的任务是从消息接收者（人物扮演角色）的视角分析对话的完整上下文，包括主题、情感基调、具体情境，然后生成完全贴合对话内容和人物形象的AI绘画提示词。提示词必须准确反映对话的核心内容，特别是从消息接收者的视角出发，不要添加任何与对话无关的元素。"},
-            {"role": "user", "content": prompt}
+                {
+                    "role": "user",
+                    "content": prompt
+                }
             ],
-            "max_tokens": 300,  # 固定最大令牌数
-            "temperature": 0.7  # 固定温度参数
+            "temperature": 0.7,
+            "max_tokens": 150,
+            "top_p": 0.9,
+            "frequency_penalty": 0.0,
+            "presence_penalty": 0.0
         }
         
-        print(f"[LLM提示词生成] 发送LLM请求...")
+        self.logger.info(f"[LLM提示词生成] 发送请求到LLM服务: 模型={self.prompt_llm_model}")
         
-        # 发送LLM请求
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self.prompt_llm_api_url, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    llm_response = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                    print(f"[LLM提示词生成] LLM响应原始内容: {llm_response}")
-                    
-                    # 清理响应内容，确保只返回提示词
-                    llm_response = re.sub(r'^[\"\']|[\"\']$', '', llm_response)  # 移除引号
-                    llm_response = re.sub(r'^提示词：|^生成的提示词：', '', llm_response, flags=re.IGNORECASE)
-                    
-                    # 验证提示词质量
-                    if len(llm_response) >= 20 and len(llm_response) <= 300:  # 固定长度限制
-                        print(f"[LLM提示词生成] LLM生成提示词完成: {llm_response}")
-                        return llm_response
+        try:
+            # 发送请求到LLM服务
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.prompt_llm_api_url,  # 修复API地址引用错误
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        # 提取生成的提示词
+                        generated_prompt = result["choices"][0]["message"]["content"].strip()
+                        self.logger.info(f"[LLM提示词生成] 成功生成提示词: {generated_prompt}")
+                        return generated_prompt
                     else:
-                        error_msg = f"生成的提示词长度不符合要求，应在20-300字符之间，当前长度: {len(llm_response)}"
-                        print(f"[LLM提示词生成] {error_msg}")
-                        raise Exception(error_msg)
-                else:
-                    error_msg = f"LLM提示词生成请求失败，状态码：{response.status}"
-                    print(f"[LLM提示词生成] {error_msg}")
-                    raise Exception(error_msg)
-                        
+                        self.logger.error(f"[LLM提示词生成] LLM服务返回错误: 状态码={response.status}, 响应={await response.text()}")
+                        # LLM调用失败，回退到传统方法
+                        self.logger.warning("[LLM提示词生成] LLM调用失败，回退到传统方法生成提示词")
+                        return await self._traditional_generate_paint_prompt(message)
+        except Exception as e:
+            self.logger.error(f"[LLM提示词生成] 调用LLM服务时发生异常: {str(e)}")
+            # 发生异常时，回退到传统方法
+            self.logger.warning("[LLM提示词生成] 发生异常，回退到传统方法生成提示词")
+            return await self._traditional_generate_paint_prompt(message)
+    
     def _extract_keywords(self, text: str) -> list:
         """
         从文本中提取关键词（简单实现）
@@ -744,7 +712,7 @@ class ModFlux(Star):
         stop_words = {'的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好', '自己', '这'}
         
         # 简单分词和清洗
-        words = re.findall(r'[\w]+', text.lower())
+        words = re.findall(r'[\\w]+', text.lower())
         keywords = [word for word in words if word not in stop_words and len(word) > 1]
         
         return keywords
@@ -759,7 +727,7 @@ class ModFlux(Star):
         Returns:
             str: 生成的绘画提示词
         """
-        print(f"[传统提示词生成] 开始使用传统方法生成提示词，消息内容: {message}")
+        self.logger.info(f"[传统提示词生成] 开始使用传统方法生成提示词，消息内容: {message}")
         
         # 使用基础模板
         base_templates = [
@@ -770,22 +738,22 @@ class ModFlux(Star):
         
         # 随机选择一个模板
         template = random.choice(base_templates)
-        print(f"[传统提示词生成] 选择的模板: {template}")
+        self.logger.info(f"[传统提示词生成] 选择的模板: {template}")
         
         # 提取关键词作为场景描述
         keywords = self._extract_keywords(message)
-        print(f"[传统提示词生成] 提取到的关键词: {keywords}")
+        self.logger.info(f"[传统提示词生成] 提取到的关键词: {keywords}")
         
         if keywords:
             scene_desc = ", ".join(keywords[:3])  # 最多使用3个关键词
         else:
             # 如果没有提取到关键词，则使用整个消息作为场景描述
             scene_desc = message[:50]  # 限制长度
-            print(f"[传统提示词生成] 未提取到关键词，使用消息前50字符作为场景描述: {scene_desc}")
+            self.logger.info(f"[传统提示词生成] 未提取到关键词，使用消息前50字符作为场景描述: {scene_desc}")
         
         # 生成最终提示词
         prompt = template.format(scene_description=scene_desc)
-        print(f"[传统提示词生成] 传统方法生成提示词完成: {prompt}")
+        self.logger.info(f"[传统提示词生成] 传统方法生成提示词完成: {prompt}")
         return prompt
 
     async def auto_paint_check(self, event: AstrMessageEvent):
@@ -798,90 +766,140 @@ class ModFlux(Star):
         Yields:
             如果触发绘画，则返回生成的图片；否则不返回任何内容
         """
-        print("[自动绘图] 开始自动绘图检查")
+        self.logger.info("[自动绘图] 开始自动绘图检查")
         
         # 获取用户消息
         message = event.message_obj.message_str
-        print(f"[自动绘图] 接收到消息: {message}")
+        self.logger.info(f"[自动绘图] 接收到消息: {message}")
         
         # 跳过命令消息（避免重复触发）
         if message.startswith('/'):
-            print("[自动绘图] 消息以'/'开头，跳过绘图检查")
+            self.logger.info("[自动绘图] 消息以'/'开头，跳过绘图检查")
             return
         
         # 更新对话历史缓存
         self._update_conversation_cache(message, "用户")
-        print("[自动绘图] 已更新对话历史缓存")
+        self.logger.info("[自动绘图] 已更新对话历史缓存")
         
         # 判断是否应该触发绘画
-        print("[自动绘图] 开始判断是否需要绘图...")
+        self.logger.info("[自动绘图] 开始判断是否需要绘图...")
         if await self._should_paint(message):
-            print("[自动绘图] 判断结果: 需要绘图，开始生成图片...")
+            self.logger.info("[自动绘图] 判断结果: 需要绘图，开始生成图片...")
             try:
                 # 更新最后绘画时间
                 self.last_paint_time = time.time()
-                print(f"[自动绘图] 已更新最后绘画时间: {self.last_paint_time}")
+                self.logger.info(f"[自动绘图] 已更新最后绘画时间: {self.last_paint_time}")
                 
                 # 生成绘画提示词（基于对话上下文）
-                print("[自动绘图] 开始生成绘画提示词...")
+                self.logger.info("[自动绘图] 开始生成绘画提示词...")
                 paint_prompt = await self._generate_paint_prompt(message, self.conversation_cache)
-                print(f"[自动绘图] 生成的绘画提示词: {paint_prompt}")
+                self.logger.info(f"[自动绘图] 生成的绘画提示词: {paint_prompt}")
                 
                 # 调用图像生成API
-                print(f"[自动绘图] 开始调用图像生成API，提示词: {paint_prompt}，尺寸: {self.size}")
+                self.logger.info(f"[自动绘图] 开始调用图像生成API，提示词: {paint_prompt}，尺寸: {self.size}")
                 image_url = await self._request_image(paint_prompt, self.size)
-                print(f"[自动绘图] 图像生成完成，图片URL: {image_url}")
+                self.logger.info(f"[自动绘图] 图像生成完成，图片URL: {image_url}")
                 
                 # 尝试多种方式发送图片
-                print("[自动绘图] 开始发送图片...")
+                self.logger.info("[自动绘图] 开始发送图片...")
                 try:
                     # 方法1：下载图片到本地
-                    print("[自动绘图] 尝试下载图片到本地...")
+                    self.logger.info("[自动绘图] 尝试下载图片到本地...")
                     local_image_path = await self._download_image(image_url)
-                    print(f"[自动绘图] 图片下载完成，本地路径: {local_image_path}")
+                    self.logger.info(f"[自动绘图] 图片下载完成，本地路径: {local_image_path}")
                     chain = [
-                        Plain(f"根据我们的对话，我为你创作了一幅画：\n{paint_prompt}\n"),
+                        Plain(f"根据我们的对话，我为你创作了一幅画：\\n{paint_prompt}\\n"),
                         Image.fromFile(local_image_path)
                     ]
                 except Exception as download_error:
-                    print(f"[自动绘图] 下载图片失败: {str(download_error)}")
+                    self.logger.error(f"[自动绘图] 下载图片失败: {str(download_error)}")
                     # 方法1失败，尝试方法2：使用base64编码
                     try:
-                        print("[自动绘图] 尝试使用base64编码发送图片...")
+                        self.logger.info("[自动绘图] 尝试使用base64编码发送图片...")
                         image_base64 = await self._image_to_base64(image_url)
-                        print("[自动绘图] 图片base64编码完成")
+                        self.logger.info("[自动绘图] 图片base64编码完成")
                         chain = [
-                            Plain(f"根据我们的对话，我为你创作了一幅画：\n{paint_prompt}\n"),
+                            Plain(f"根据我们的对话，我为你创作了一幅画：\\n{paint_prompt}\\n"),
                             Image.fromBase64(image_base64)
                         ]
                     except Exception as base64_error:
-                        print(f"[自动绘图] base64编码失败: {str(base64_error)}")
+                        self.logger.error(f"[自动绘图] base64编码失败: {str(base64_error)}")
                         # 所有方法都失败，返回原始URL（可能会被平台拦截）
-                        print("[自动绘图] 所有方法都失败，返回原始URL")
+                        self.logger.warning("[自动绘图] 所有方法都失败，返回原始URL")
                         chain = [
-                            Plain(f"根据我们的对话，我为你创作了一幅画：\n{paint_prompt}\n"),
+                            Plain(f"根据我们的对话，我为你创作了一幅画：\\n{paint_prompt}\\n"),
                             Image.fromURL(image_url)
                         ]
                 
                 # 将绘画结果添加到对话历史缓存
                 bot_response = f"根据我们的对话，我为你创作了一幅画：{paint_prompt}"
                 self._update_conversation_cache(bot_response, "机器人")
-                print("[自动绘图] 已将绘画结果添加到对话历史缓存")
+                self.logger.info("[自动绘图] 已将绘画结果添加到对话历史缓存")
                 
                 yield event.chain_result(chain)
-                print("[自动绘图] 图片发送完成")
+                self.logger.info("[自动绘图] 图片发送完成")
                 
             except Exception as e:
                 # 绘画失败时静默处理，不干扰正常对话
-                print(f"[自动绘图] 自动绘画失败: {str(e)}")
+                self.logger.error(f"[自动绘图] 自动绘画失败: {str(e)}")
                 
                 # 将失败信息也添加到对话历史缓存
                 error_response = f"绘画失败：{str(e)}"
                 self._update_conversation_cache(error_response, "机器人")
-                print("[自动绘图] 已将失败信息添加到对话历史缓存")
+                self.logger.info("[自动绘图] 已将失败信息添加到对话历史缓存")
         else:
-            print("[自动绘图] 判断结果: 不需要绘图")
+            self.logger.info("[自动绘图] 判断结果: 不需要绘图")
     
+    def on_config_update(self, new_config: AstrBotConfig):
+        """
+        配置更新回调 - 当插件配置被更新时调用
+        
+        Args:
+            new_config: 更新后的配置对象（AstrBotConfig）
+        """
+        self.logger.info("[配置更新] 接收到新的配置")
+        
+        # 更新配置字典
+        self.config = new_config
+        
+        # 更新API相关参数
+        self.api_key = new_config.get("api_key", self.api_key)
+        self.model = new_config.get("model", self.model)
+        self.size = new_config.get("size", self.size)
+        self.api_url = new_config.get("api_url", self.api_url)
+        self.provider = new_config.get("provider", self.provider)
+        
+        # 更新智能绘画判断相关配置
+        self.paint_probability = new_config.get("paint_probability", self.paint_probability)
+        self.min_paint_interval = new_config.get("min_paint_interval", self.min_paint_interval)
+        
+        # 更新LLM智能判断配置
+        self.enable_llm_judge = new_config.get("enable_llm_judge", self.enable_llm_judge)
+        
+        # 更新判断是否绘画的大模型配置
+        self.judge_llm_api_url = new_config.get("judge_llm_api_url", self.judge_llm_api_url)
+        self.judge_llm_api_key = new_config.get("judge_llm_api_key", self.judge_llm_api_key)
+        self.judge_llm_model = new_config.get("judge_llm_model", self.judge_llm_model)
+        
+        # 更新生成提示词的大模型配置
+        self.prompt_llm_api_url = new_config.get("prompt_llm_api_url", self.prompt_llm_api_url)
+        self.prompt_llm_api_key = new_config.get("prompt_llm_api_key", self.prompt_llm_api_key)
+        self.prompt_llm_model = new_config.get("prompt_llm_model", self.prompt_llm_model)
+        
+        # 更新对话历史缓存配置
+        self.max_cache_size = new_config.get("max_cache_size", self.max_cache_size)
+        
+        # 更新人物扮演形象配置
+        self.character_profile = new_config.get("default_character_profile", self.character_profile)
+        
+        # 更新临时目录配置
+        temp_dir_name = new_config.get("temp_dir_name", "astrbot_images")
+        self.temp_dir = Path(tempfile.gettempdir()) / temp_dir_name
+        self.temp_dir.mkdir(exist_ok=True)
+        
+        self.logger.info("[配置更新] 配置已成功更新")
+    
+    @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
         """
         消息事件处理器 - 处理所有接收到的消息

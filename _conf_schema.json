@@ -82,5 +82,23 @@
         "type": "int",
         "default": 10,
         "hint": "智能绘画功能保存的对话历史记录最大数量，用于基于上下文生成提示词"
+    },
+    "min_paint_interval": {
+        "description": "最小绘画间隔时间",
+        "type": "int",
+        "default": 300,
+        "hint": "两次自动绘画之间的最小间隔时间（秒），默认为300秒（5分钟）"
+    },
+    "provider": {
+        "description": "API提供商",
+        "type": "string",
+        "default": "ms",
+        "hint": "图像生成API的提供商，默认为'ms'（ModelScope）"
+    },
+    "temp_dir_name": {
+        "description": "临时目录名称",
+        "type": "string",
+        "default": "astrbot_images",
+        "hint": "用于存储下载图片的临时目录名称"
     }
 }
