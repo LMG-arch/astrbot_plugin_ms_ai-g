@@ -67,7 +67,7 @@
     },
     "enable_llm_judge": {
         "description": "启用大模型智能判断",
-        "type": "boolean",
+        "type": "bool",
         "default": false,
         "hint": "是否启用大语言模型进行智能绘画判断"
     },

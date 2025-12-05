@@ -13,7 +13,7 @@
 - 智能绘画判断功能，聊天过程中自动识别绘画机会
 - 支持AI大语言模型智能判断，符合OpenAI格式
 
-版本：1.04
+版本：1.05
 """
 
 from astrbot.api.message_components import Plain, Image
