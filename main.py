@@ -803,13 +803,13 @@ class ModFlux(Star):
         # 首先尝试直接获取message_str属性（标准AstrMessageEvent对象）
         if hasattr(event, 'message_str'):
             message = event.message_str
-        # 如果直接获取失败，尝试通过message_obj获取（旧版本AstrMessageEvent对象）
-        elif hasattr(event, 'message_obj') and hasattr(event.message_obj, 'message_str'):
-            message = event.message_obj.message_str
         # 如果以上都失败，尝试获取ModFlux对象的message属性
         elif hasattr(event, 'message'):
             # ModFlux对象，直接获取message属性
             message = event.message
+        # 如果直接获取失败，尝试通过message_obj获取（旧版本AstrMessageEvent对象）
+        elif hasattr(event, 'message_obj') and hasattr(event.message_obj, 'message_str'):
+            message = event.message_obj.message_str
         else:
             # 无法获取消息内容，记录错误并返回
             self.logger.error(f"[自动绘图] 无法获取消息内容，事件对象类型: {type(event)}")
@@ -998,12 +998,12 @@ class ModFlux(Star):
         # 首先尝试直接获取message_str属性（标准AstrMessageEvent对象）
         if hasattr(actual_event, 'message_str'):
             message = actual_event.message_str
-        # 如果直接获取失败，尝试通过message_obj获取（旧版本AstrMessageEvent对象）
-        elif hasattr(actual_event, 'message_obj') and hasattr(actual_event.message_obj, 'message_str'):
-            message = actual_event.message_obj.message_str
         # 如果以上都失败，尝试获取ModFlux对象的message属性
         elif hasattr(actual_event, 'message'):
             message = actual_event.message
+        # 如果直接获取失败，尝试通过message_obj获取（旧版本AstrMessageEvent对象）
+        elif hasattr(actual_event, 'message_obj') and hasattr(actual_event.message_obj, 'message_str'):
+            message = actual_event.message_obj.message_str
         else:
             # 无法获取消息内容，记录错误并返回
             self.logger.error(f"[命令处理] 无法获取消息内容，事件对象类型: {type(actual_event)}")
