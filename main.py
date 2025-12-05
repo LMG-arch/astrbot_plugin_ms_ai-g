@@ -785,7 +785,7 @@ class ModFlux(Star):
         self.logger.info("[自动绘图] 开始自动绘图检查")
         
         # 获取用户消息
-        message = event.message_obj.message_str
+        message = event.message_str
         self.logger.info(f"[自动绘图] 接收到消息: {message}")
         
         # 跳过命令消息（避免重复触发）
@@ -926,7 +926,7 @@ class ModFlux(Star):
         self.logger.info("[命令处理] 接收到/aiimg命令")
         
         # 提取命令参数（提示词）
-        message = event.message_obj.message_str
+        message = event.message_str
         parts = message.strip().split(maxsplit=1)
         
         if len(parts) < 2:
