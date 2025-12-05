@@ -13,7 +13,7 @@
 - 智能绘画判断功能，聊天过程中自动识别绘画机会
 - 支持AI大语言模型智能判断，符合OpenAI格式
 
-版本：1.4
+版本：1.0
 """
 
 from astrbot.api.message_components import Plain, Image
@@ -32,7 +32,7 @@ from pathlib import Path
 
 
 # 注册插件到AstrBot系统
-@register("ms_aiimg", "", "接入魔搭社区文生图模型。支持LLM调用和命令调用。", "1.4")
+@register("ms_aiimg", "", "接入魔搭社区文生图模型。支持LLM调用和命令调用。", "1.0")
 class ModFlux(Star):
     """
     魔搭社区文生图插件主类
