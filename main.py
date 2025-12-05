@@ -986,12 +986,14 @@ class ModFlux(Star):
             yield event.plain_result(error_msg)
 
     @filter.event_message_type(filter.EventMessageType.ALL)
-    async def on_message(self, event: AstrMessageEvent):
+    async def on_message(self, event: AstrMessageEvent, *args, **kwargs):
         """
         消息事件处理器 - 处理所有接收到的消息
         
         Args:
             event: AstrBot消息事件对象
+            *args: 可变位置参数
+            **kwargs: 可变关键字参数
         """
         # 调用自动绘画检查功能
         async for result in self.auto_paint_check(event):
