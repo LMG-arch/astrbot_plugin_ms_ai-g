@@ -471,7 +471,7 @@ class ModFlux(Star):
         print(f"[绘图判断] 概率触发条件满足")
         
         # 如果启用了LLM智能判断，优先使用LLM判断
-        if self.enable_llm_judge and self.llm_api_url and self.llm_api_key:
+        if self.enable_llm_judge and self.judge_llm_api_url and self.judge_llm_api_key:
             print("[绘图判断] 使用LLM智能判断")
             result = await self._llm_judge_should_paint(message)
             print(f"[绘图判断] LLM判断结果: {result}")
