@@ -33,7 +33,7 @@ from pathlib import Path
 
 
 # 注册插件到AstrBot系统
-@register("ms_aiimg", "", "接入魔搭社区文生图模型。支持LLM调用和命令调用。", "1.0")
+@register(name="ms_aiimg", desc="接入魔搭社区文生图模型。支持LLM调用和命令调用。", version="1.0")
 class ModFlux(Star):
     """
     魔搭社区文生图插件主类
