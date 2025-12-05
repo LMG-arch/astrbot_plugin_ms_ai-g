@@ -121,7 +121,7 @@ class ModFlux(Star):
 
         # 验证必要配置
         if not self.api_key:
-            self.logger.warning("API密钥未配置，部分功能将受限。请前往插件配置页面设置API密钥。")
+            print("警告: API密钥未配置，部分功能将受限。请前往插件配置页面设置API密钥。")
 
     async def _download_image(self, image_url: str) -> str:
         """
