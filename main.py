@@ -17,7 +17,7 @@
 """
 
 from astrbot.api.message_components import Plain, Image
-from astrbot.api.event import AstrMessageEvent
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.event.filter import command, llm_tool
 from astrbot.api.star import Context, Star, register
 import aiohttp
@@ -33,7 +33,7 @@ from pathlib import Path
 
 
 # 注册插件到AstrBot系统
-@register(name="ms_aiimg", desc="接入魔搭社区文生图模型。支持LLM调用和命令调用。", version="1.0")
+@register(name="ms_ai-g", desc="接入魔搭社区文生图模型。支持LLM调用和命令调用。", version="1.0", author="LMG-arch")
 class ModFlux(Star):
     """
     魔搭社区文生图插件主类
@@ -348,7 +348,7 @@ class ModFlux(Star):
             # 异常处理，返回错误信息
             yield event.plain_result(f"生成图片时遇到问题: {str(e)}")
             
-    @command("aiimg")
+    @filter.command("aiimg")
     async def generate_image_command(self, event: AstrMessageEvent, *args, **kwargs):
         """
         命令调用接口 - 通过/aiimg命令生成图片
@@ -409,7 +409,7 @@ class ModFlux(Star):
             # 异常处理，返回错误信息
             yield event.plain_result(f"\n生成图片失败: {str(e)}")
 
-    @command("setcharacter")
+    @filter.command("setcharacter")
     async def set_character_command(self, event: AstrMessageEvent, *args, **kwargs):
         """
         命令调用接口 - 通过/setcharacter命令设置人物扮演形象
@@ -788,7 +788,7 @@ class ModFlux(Star):
         print(f"[传统提示词生成] 传统方法生成提示词完成: {prompt}")
         return prompt
 
-    @command()
+    @filter.command("autopaint")
     async def auto_paint_check(self, event: AstrMessageEvent):
         """
         自动绘画检查 - 在聊天过程中智能判断是否应该生成图片
