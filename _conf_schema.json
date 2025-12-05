@@ -79,7 +79,7 @@
     },
     "max_cache_size": {
         "description": "对话历史缓存最大条数",
-        "type": "integer",
+        "type": "int",
         "default": 10,
         "hint": "智能绘画功能保存的对话历史记录最大数量，用于基于上下文生成提示词"
     }
