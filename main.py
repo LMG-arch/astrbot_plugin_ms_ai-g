@@ -772,20 +772,30 @@ class ModFlux(Star):
         self.logger.info(f"[传统提示词生成] 传统方法生成提示词完成: {prompt}")
         return prompt
 
-    async def auto_paint_check(self, event: AstrMessageEvent):
+    async def auto_paint_check(self, event):
         """
-        自动绘画检查 - 在聊天过程中智能判断是否应该生成图片
+        自动绘画检查 - 检查消息内容是否应该触发自动绘画
         
         Args:
             event: AstrBot消息事件对象
             
         Yields:
-            如果触发绘画，则返回生成的图片；否则不返回任何内容
+            生成的图片或空结果
         """
         self.logger.info("[自动绘图] 开始自动绘图检查")
         
-        # 获取用户消息
-        message = event.message_str
+        # 获取消息内容，兼容不同版本的事件对象
+        if hasattr(event, 'message_str'):
+            # 标准AstrMessageEvent对象
+            message = event.message_str
+        elif hasattr(event, 'message_obj') and hasattr(event.message_obj, 'message_str'):
+            # 旧版本AstrMessageEvent对象
+            message = event.message_obj.message_str
+        else:
+            # 无法获取消息内容，记录错误并返回
+            self.logger.error(f"[自动绘图] 无法获取消息内容，事件对象类型: {type(event)}")
+            return
+            
         self.logger.info(f"[自动绘图] 接收到消息: {message}")
         
         # 跳过命令消息（避免重复触发）
@@ -913,7 +923,7 @@ class ModFlux(Star):
         self.logger.info("[配置更新] 配置已成功更新")
     
     @filter.command("aiimg")
-    async def aiimg_command(self, event: AstrMessageEvent):
+    async def aiimg_command(self, event):
         """
         处理/aiimg命令 - 手动触发图像生成
         
@@ -925,8 +935,19 @@ class ModFlux(Star):
         """
         self.logger.info("[命令处理] 接收到/aiimg命令")
         
-        # 提取命令参数（提示词）
-        message = event.message_str
+        # 提取命令参数（提示词），兼容不同版本的事件对象
+        if hasattr(event, 'message_str'):
+            # 标准AstrMessageEvent对象
+            message = event.message_str
+        elif hasattr(event, 'message_obj') and hasattr(event.message_obj, 'message_str'):
+            # 旧版本AstrMessageEvent对象
+            message = event.message_obj.message_str
+        else:
+            # 无法获取消息内容，记录错误并返回
+            self.logger.error(f"[命令处理] 无法获取消息内容，事件对象类型: {type(event)}")
+            yield event.plain_result("无法处理命令，请检查插件配置。")
+            return
+            
         parts = message.strip().split(maxsplit=1)
         
         if len(parts) < 2:
@@ -980,7 +1001,7 @@ class ModFlux(Star):
             yield event.plain_result(error_msg)
 
     @filter.event_message_type(filter.EventMessageType.ALL)
-    async def on_message(self, event: AstrMessageEvent, *args, **kwargs):
+    async def on_message(self, event, *args, **kwargs):
         """
         消息事件处理器 - 处理所有接收到的消息
         
@@ -989,6 +1010,24 @@ class ModFlux(Star):
             *args: 可变位置参数
             **kwargs: 可变关键字参数
         """
+        # 检查事件对象类型，兼容不同版本的AstrBot
+        if hasattr(event, 'message_str'):
+            # 标准AstrMessageEvent对象
+            pass
+        elif hasattr(event, 'message_obj') and hasattr(event.message_obj, 'message_str'):
+            # 旧版本AstrMessageEvent对象
+            pass
+        else:
+            # 可能是插件实例被错误传递，尝试从参数中获取事件对象
+            if args and hasattr(args[0], 'message_str'):
+                event = args[0]
+            elif args and hasattr(args[0], 'message_obj') and hasattr(args[0].message_obj, 'message_str'):
+                event = args[0]
+            else:
+                # 无法确定事件对象，记录错误并返回
+                self.logger.error(f"无法确定事件对象类型: {type(event)}")
+                return
+        
         # 调用自动绘画检查功能
         async for result in self.auto_paint_check(event):
             yield result
