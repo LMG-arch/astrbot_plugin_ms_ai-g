@@ -788,7 +788,6 @@ class ModFlux(Star):
         print(f"[传统提示词生成] 传统方法生成提示词完成: {prompt}")
         return prompt
 
-    @filter.command("autopaint")
     async def auto_paint_check(self, event: AstrMessageEvent):
         """
         自动绘画检查 - 在聊天过程中智能判断是否应该生成图片
@@ -882,3 +881,14 @@ class ModFlux(Star):
                 print("[自动绘图] 已将失败信息添加到对话历史缓存")
         else:
             print("[自动绘图] 判断结果: 不需要绘图")
+    
+    async def on_message(self, event: AstrMessageEvent):
+        """
+        消息事件处理器 - 处理所有接收到的消息
+        
+        Args:
+            event: AstrBot消息事件对象
+        """
+        # 调用自动绘画检查功能
+        async for result in self.auto_paint_check(event):
+            yield result
