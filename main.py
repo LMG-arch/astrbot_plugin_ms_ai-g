@@ -483,6 +483,8 @@ class ModFlux(Star):
         print(f"[绘图判断] 关键词匹配结果: {result}")
         return result
 
+
+
     async def _llm_judge_should_paint(self, message: str) -> bool:
         """
         使用AI大语言模型判断是否应该触发绘画功能
