@@ -57,7 +57,7 @@ class ModFlux(Star):
         self.api_key = config.get("api_key")  # API密钥
         self.model = config.get("model")      # 模型名称
         self.size = config.get("size", "768x512")  # 默认图片尺寸
-        self.api_url = config.get("api_url")  # API基础URL
+        self.api_url = config.get("api_url", "https://modelscope.cn/api/v1/")  # API基础URL
         self.provider = config.get("provider", "ms")  # 提供商，默认为ModelScope
         
         # 智能绘画判断相关配置
@@ -210,8 +210,13 @@ class ModFlux(Star):
         }
         
         # 发送异步图像生成请求
+        # 修复URL构建问题，避免重复的v1路径
+        if self.api_url and self.api_url.rstrip('/').endswith('/v1'):
+            api_endpoint = f"{self.api_url.rstrip('/')}/images/generations"
+        else:
+            api_endpoint = f"{self.api_url.rstrip('/')}/v1/images/generations"
         async with session.post(
-            f"{self.api_url}v1/images/generations",
+            api_endpoint,
             headers={**common_headers, "X-ModelScope-Async-Mode": "true"},  # 启用异步模式
             data=json.dumps(payload, ensure_ascii=False).encode('utf-8')
         ) as response:
@@ -228,8 +233,13 @@ class ModFlux(Star):
         
         while True:
             # 查询任务状态
+            # 修复URL构建问题，避免重复的v1路径
+            if self.api_url and self.api_url.rstrip('/').endswith('/v1'):
+                task_endpoint = f"{self.api_url.rstrip('/')}/tasks/{task_id}"
+            else:
+                task_endpoint = f"{self.api_url.rstrip('/')}/v1/tasks/{task_id}"
             async with session.get(
-                f"{self.api_url}v1/tasks/{task_id}",
+                task_endpoint,
                 headers={**common_headers, "X-ModelScope-Task-Type": "image_generation"},
             ) as result_response:
                 result_response.raise_for_status()
