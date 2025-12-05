@@ -349,7 +349,7 @@ class ModFlux(Star):
             yield event.plain_result(f"生成图片时遇到问题: {str(e)}")
             
     @command("aiimg")
-    async def generate_image_command(self, event: AstrMessageEvent, *args):
+    async def generate_image_command(self, event: AstrMessageEvent, *args, **kwargs):
         """
         命令调用接口 - 通过/aiimg命令生成图片
         
@@ -357,7 +357,8 @@ class ModFlux(Star):
         
         Args:
             event: AstrBot消息事件对象
-            *args: 额外的参数（为兼容性保留）
+            *args: 额外的位置参数（为兼容性保留）
+            **kwargs: 额外的关键字参数（为兼容性保留）
             
         Yields:
             AstrBot消息事件结果，包含生成的图片和提示词信息或错误信息
@@ -409,7 +410,7 @@ class ModFlux(Star):
             yield event.plain_result(f"\n生成图片失败: {str(e)}")
 
     @command("setcharacter")
-    async def set_character_command(self, event: AstrMessageEvent, *args):
+    async def set_character_command(self, event: AstrMessageEvent, *args, **kwargs):
         """
         命令调用接口 - 通过/setcharacter命令设置人物扮演形象
         
@@ -417,7 +418,8 @@ class ModFlux(Star):
         
         Args:
             event: AstrBot消息事件对象
-            *args: 额外的参数（为兼容性保留）
+            *args: 额外的位置参数（为兼容性保留）
+            **kwargs: 额外的关键字参数（为兼容性保留）
             
         Yields:
             AstrBot消息事件结果，包含设置成功或失败信息
@@ -451,21 +453,35 @@ class ModFlux(Star):
         Returns:
             bool: 是否触发绘画
         """
+        print(f"[绘图判断] 开始判断是否需要绘图，消息内容: {message}")
+        
         # 检查时间间隔
         current_time = time.time()
-        if current_time - self.last_paint_time < self.min_paint_interval:
+        time_diff = current_time - self.last_paint_time
+        if time_diff < self.min_paint_interval:
+            print(f"[绘图判断] 时间间隔不足，上次绘图时间: {self.last_paint_time}, 当前时间: {current_time}, 间隔: {time_diff:.2f}s")
             return False
+        print(f"[绘图判断] 时间间隔满足条件")
         
         # 检查概率触发
-        if random.random() > self.paint_probability:
+        rand_val = random.random()
+        if rand_val > self.paint_probability:
+            print(f"[绘图判断] 概率未触发，随机值: {rand_val:.2f}, 触发概率: {self.paint_probability:.2f}")
             return False
+        print(f"[绘图判断] 概率触发条件满足")
         
         # 如果启用了LLM智能判断，优先使用LLM判断
         if self.enable_llm_judge and self.llm_api_url and self.llm_api_key:
-            return await self._llm_judge_should_paint(message)
+            print("[绘图判断] 使用LLM智能判断")
+            result = await self._llm_judge_should_paint(message)
+            print(f"[绘图判断] LLM判断结果: {result}")
+            return result
         
         # 否则使用传统的关键词匹配方法
-        return await self._keyword_judge_should_paint(message)
+        print("[绘图判断] 使用关键词匹配方法")
+        result = await self._keyword_judge_should_paint(message)
+        print(f"[绘图判断] 关键词匹配结果: {result}")
+        return result
 
     async def _llm_judge_should_paint(self, message: str) -> bool:
         """
@@ -478,6 +494,8 @@ class ModFlux(Star):
             bool: 是否触发绘画
         """
         try:
+            print(f"[LLM绘图判断] 开始使用LLM判断是否需要绘图，消息内容: {message}")
+            
             # 构建LLM判断请求
             prompt = f"""请分析以下用户消息内容，判断是否适合生成一幅画作。
 
@@ -509,26 +527,31 @@ class ModFlux(Star):
                 "temperature": 0.1  # 固定温度参数
             }
             
+            print(f"[LLM绘图判断] 发送LLM请求...")
+            
             # 发送LLM请求
             async with aiohttp.ClientSession() as session:
                 async with session.post(self.judge_llm_api_url, headers=headers, json=payload) as response:
                     if response.status == 200:
                         result = await response.json()
                         llm_response = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip().lower()
+                        print(f"[LLM绘图判断] LLM响应内容: {llm_response}")
                         
                         # 解析LLM响应
                         if "是" in llm_response or "yes" in llm_response or "true" in llm_response:
+                            print("[LLM绘图判断] LLM判断结果: 是")
                             return True
                         else:
+                            print("[LLM绘图判断] LLM判断结果: 否")
                             return False
                     else:
                         # LLM请求失败，回退到关键词判断
-                        print(f"LLM判断请求失败，状态码：{response.status}")
+                        print(f"[LLM绘图判断] LLM请求失败，状态码：{response.status}，回退到关键词判断")
                         return await self._keyword_judge_should_paint(message)
                         
         except Exception as e:
             # LLM判断异常，回退到关键词判断
-            print(f"LLM判断异常：{str(e)}")
+            print(f"[LLM绘图判断] LLM判断异常：{str(e)}，回退到关键词判断")
             return await self._keyword_judge_should_paint(message)
 
     async def _keyword_judge_should_paint(self, message: str) -> bool:
@@ -541,6 +564,8 @@ class ModFlux(Star):
         Returns:
             bool: 是否触发绘画
         """
+        print(f"[关键词绘图判断] 开始使用关键词匹配判断是否需要绘图，消息内容: {message}")
+        
         # 检查消息内容是否包含绘画相关关键词
         paint_keywords = [
             '画', '绘画', '图片', '图像', '照片', '插图', '绘图', '画画',
@@ -550,12 +575,16 @@ class ModFlux(Star):
         
         # 检查消息长度，过短的消息不触发
         if len(message.strip()) < 10:  # 固定最小消息长度
+            print(f"[关键词绘图判断] 消息长度不足，长度: {len(message.strip())}")
             return False
+        print(f"[关键词绘图判断] 消息长度满足条件")
         
         # 检查是否包含绘画关键词
         for keyword in paint_keywords:
             if keyword in message:
+                print(f"[关键词绘图判断] 匹配到关键词: {keyword}")
                 return True
+        print("[关键词绘图判断] 未匹配到任何关键词")
         
         # 检查是否包含描述性内容（形容词+名词的组合）
         descriptive_patterns = [
@@ -566,8 +595,11 @@ class ModFlux(Star):
         
         for pattern in descriptive_patterns:
             if re.search(pattern, message):
+                print(f"[关键词绘图判断] 匹配到描述性模式: {pattern}")
                 return True
+        print("[关键词绘图判断] 未匹配到任何描述性模式")
         
+        print("[关键词绘图判断] 关键词匹配结果: 否")
         return False
 
     async def _generate_paint_prompt(self, message: str, conversation_history: list = None) -> str:
@@ -581,15 +613,23 @@ class ModFlux(Star):
         Returns:
             str: 生成的绘画提示词
         """
+        print(f"[提示词生成] 开始生成绘画提示词，消息内容: {message}")
+        
         # 如果启用了LLM智能判断且有生成提示词的大模型配置，优先使用AI模型生成提示词
         if self.enable_llm_judge and self.prompt_llm_api_url and self.prompt_llm_api_key:
+            print("[提示词生成] 使用LLM生成提示词")
             try:
-                return await self._llm_generate_paint_prompt(message, conversation_history)
+                result = await self._llm_generate_paint_prompt(message, conversation_history)
+                print(f"[提示词生成] LLM生成提示词完成: {result}")
+                return result
             except Exception as e:
-                print(f"AI提示词生成失败，使用传统方法：{str(e)}")
+                print(f"[提示词生成] AI提示词生成失败，使用传统方法：{str(e)}")
         
         # 使用传统方法生成提示词
-        return await self._traditional_generate_paint_prompt(message)
+        print("[提示词生成] 使用传统方法生成提示词")
+        result = await self._traditional_generate_paint_prompt(message)
+        print(f"[提示词生成] 传统方法生成提示词完成: {result}")
+        return result
 
     async def _llm_generate_paint_prompt(self, message: str, conversation_history: list = None) -> str:
         """
@@ -602,6 +642,8 @@ class ModFlux(Star):
         Returns:
             str: 生成的绘画提示词
         """
+        print(f"[LLM提示词生成] 开始使用LLM生成提示词，消息内容: {message}")
+        
         # 构建对话上下文 - 基于消息接收者（人物扮演）的视角
         context = message
         if conversation_history:
@@ -610,11 +652,13 @@ class ModFlux(Star):
             recent_history = conversation_history[-recent_count:]  # 保留最近5条对话
             history_text = "\n".join([f"{item.get('role', '用户')}: {item.get('content', '')}" for item in recent_history])
             context = f"对话历史：\n{history_text}\n\n当前消息：{message}"
+            print(f"[LLM提示词生成] 对话历史: {context}")
         
         # 添加人物扮演形象信息 - 这是消息接收者的视角
         character_context = ""
         if self.character_profile:
             character_context = f"\n人物扮演形象（消息接收者的视角）：\n{self.character_profile}\n"
+            print(f"[LLM提示词生成] 人物扮演形象: {self.character_profile}")
         
         # 构建LLM提示词生成请求 - 强调基于消息接收者视角
         prompt = f"""请根据以下对话上下文和人物扮演形象（消息接收者的视角），生成一个与当前对话情境高度契合的AI绘画提示词。
@@ -654,12 +698,15 @@ class ModFlux(Star):
             "temperature": 0.7  # 固定温度参数
         }
         
+        print(f"[LLM提示词生成] 发送LLM请求...")
+        
         # 发送LLM请求
         async with aiohttp.ClientSession() as session:
             async with session.post(self.prompt_llm_api_url, headers=headers, json=payload) as response:
                 if response.status == 200:
                     result = await response.json()
                     llm_response = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    print(f"[LLM提示词生成] LLM响应原始内容: {llm_response}")
                     
                     # 清理响应内容，确保只返回提示词
                     llm_response = re.sub(r'^[\"\']|[\"\']$', '', llm_response)  # 移除引号
@@ -667,48 +714,76 @@ class ModFlux(Star):
                     
                     # 验证提示词质量
                     if len(llm_response) >= 20 and len(llm_response) <= 300:  # 固定长度限制
+                        print(f"[LLM提示词生成] LLM生成提示词完成: {llm_response}")
                         return llm_response
                     else:
-                        raise Exception(f"生成的提示词长度不符合要求，应在20-300字符之间")
+                        error_msg = f"生成的提示词长度不符合要求，应在20-300字符之间，当前长度: {len(llm_response)}"
+                        print(f"[LLM提示词生成] {error_msg}")
+                        raise Exception(error_msg)
                 else:
-                    raise Exception(f"LLM提示词生成请求失败，状态码：{response.status}")
+                    error_msg = f"LLM提示词生成请求失败，状态码：{response.status}"
+                    print(f"[LLM提示词生成] {error_msg}")
+                    raise Exception(error_msg)
                         
-    async def _traditional_generate_paint_prompt(self, message: str) -> str:
+    def _extract_keywords(self, text: str) -> list:
         """
-        使用传统方法生成绘画提示词
+        从文本中提取关键词（简单实现）
         
         Args:
-            message: 用户消息内容
+            text: 输入文本
+            
+        Returns:
+            list: 提取出的关键词列表
+        """
+        # 简单的关键词提取实现 - 移除常见停用词并提取有意义的词汇
+        # 在实际应用中，可以使用jieba分词或其他NLP库进行更精确的关键词提取
+        
+        # 常见停用词
+        stop_words = {'的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好', '自己', '这'}
+        
+        # 简单分词和清洗
+        words = re.findall(r'[\w]+', text.lower())
+        keywords = [word for word in words if word not in stop_words and len(word) > 1]
+        
+        return keywords
+
+    async def _traditional_generate_paint_prompt(self, message: str) -> str:
+        """
+        使用传统方法（模板+关键词）生成绘画提示词
+        
+        Args:
+            message: 用户当前消息内容
             
         Returns:
             str: 生成的绘画提示词
         """
-        # 基础提示词模板
-        base_prompts = [
-            "高清摄影，{content}，精美细节，专业构图，4K画质",
-            "数字艺术，{content}，梦幻风格，光影效果，大师级作品",
-            "插画风格，{content}，动漫风格，色彩鲜艳，艺术感强",
-            "油画风格，{content}，古典艺术，质感丰富，艺术气息",
-            "水彩画，{content}，柔和色彩，梦幻效果，艺术创作"
+        print(f"[传统提示词生成] 开始使用传统方法生成提示词，消息内容: {message}")
+        
+        # 使用基础模板
+        base_templates = [
+            "Anime style, {scene_description}, beautiful detailed eyes, soft lighting",
+            "High quality anime art, {scene_description}, detailed facial features, vibrant colors",
+            "Chibi style illustration, {scene_description}, cute character design, pastel colors"
         ]
         
-        # 提取消息中的关键内容
-        content = message.strip()
+        # 随机选择一个模板
+        template = random.choice(base_templates)
+        print(f"[传统提示词生成] 选择的模板: {template}")
         
-        # 移除命令和特殊符号
-        content = re.sub(r'^/\w+\s*', '', content)  # 移除命令前缀
-        content = re.sub(r'[，。！？；：、]', ' ', content)  # 替换标点符号
+        # 提取关键词作为场景描述
+        keywords = self._extract_keywords(message)
+        print(f"[传统提示词生成] 提取到的关键词: {keywords}")
         
-        # 选择随机的基础提示词模板
-        base_prompt = random.choice(base_prompts)
+        if keywords:
+            scene_desc = ", ".join(keywords[:3])  # 最多使用3个关键词
+        else:
+            # 如果没有提取到关键词，则使用整个消息作为场景描述
+            scene_desc = message[:50]  # 限制长度
+            print(f"[传统提示词生成] 未提取到关键词，使用消息前50字符作为场景描述: {scene_desc}")
         
-        # 生成最终的绘画提示词
-        prompt = base_prompt.format(content=content)
-        
-        # 限制提示词长度
-        if len(prompt) > 200:  # 固定最大长度
-            prompt = prompt[:200] + "..."
-        
+        # 生成最终提示词
+        prompt = template.format(scene_description=scene_desc)
+        print(f"[传统提示词生成] 传统方法生成提示词完成: {prompt}")
         return prompt
 
     @command()
@@ -722,46 +797,66 @@ class ModFlux(Star):
         Yields:
             如果触发绘画，则返回生成的图片；否则不返回任何内容
         """
+        print("[自动绘图] 开始自动绘图检查")
+        
         # 获取用户消息
         message = event.message_obj.message_str
+        print(f"[自动绘图] 接收到消息: {message}")
         
         # 跳过命令消息（避免重复触发）
         if message.startswith('/'):
+            print("[自动绘图] 消息以'/'开头，跳过绘图检查")
             return
         
         # 更新对话历史缓存
         self._update_conversation_cache(message, "用户")
+        print("[自动绘图] 已更新对话历史缓存")
         
         # 判断是否应该触发绘画
+        print("[自动绘图] 开始判断是否需要绘图...")
         if await self._should_paint(message):
+            print("[自动绘图] 判断结果: 需要绘图，开始生成图片...")
             try:
                 # 更新最后绘画时间
                 self.last_paint_time = time.time()
+                print(f"[自动绘图] 已更新最后绘画时间: {self.last_paint_time}")
                 
                 # 生成绘画提示词（基于对话上下文）
+                print("[自动绘图] 开始生成绘画提示词...")
                 paint_prompt = await self._generate_paint_prompt(message, self.conversation_cache)
+                print(f"[自动绘图] 生成的绘画提示词: {paint_prompt}")
                 
                 # 调用图像生成API
+                print(f"[自动绘图] 开始调用图像生成API，提示词: {paint_prompt}，尺寸: {self.size}")
                 image_url = await self._request_image(paint_prompt, self.size)
+                print(f"[自动绘图] 图像生成完成，图片URL: {image_url}")
                 
                 # 尝试多种方式发送图片
+                print("[自动绘图] 开始发送图片...")
                 try:
                     # 方法1：下载图片到本地
+                    print("[自动绘图] 尝试下载图片到本地...")
                     local_image_path = await self._download_image(image_url)
+                    print(f"[自动绘图] 图片下载完成，本地路径: {local_image_path}")
                     chain = [
                         Plain(f"根据我们的对话，我为你创作了一幅画：\n{paint_prompt}\n"),
                         Image.fromFile(local_image_path)
                     ]
                 except Exception as download_error:
+                    print(f"[自动绘图] 下载图片失败: {str(download_error)}")
                     # 方法1失败，尝试方法2：使用base64编码
                     try:
+                        print("[自动绘图] 尝试使用base64编码发送图片...")
                         image_base64 = await self._image_to_base64(image_url)
+                        print("[自动绘图] 图片base64编码完成")
                         chain = [
                             Plain(f"根据我们的对话，我为你创作了一幅画：\n{paint_prompt}\n"),
                             Image.fromBase64(image_base64)
                         ]
                     except Exception as base64_error:
+                        print(f"[自动绘图] base64编码失败: {str(base64_error)}")
                         # 所有方法都失败，返回原始URL（可能会被平台拦截）
+                        print("[自动绘图] 所有方法都失败，返回原始URL")
                         chain = [
                             Plain(f"根据我们的对话，我为你创作了一幅画：\n{paint_prompt}\n"),
                             Image.fromURL(image_url)
@@ -770,13 +865,18 @@ class ModFlux(Star):
                 # 将绘画结果添加到对话历史缓存
                 bot_response = f"根据我们的对话，我为你创作了一幅画：{paint_prompt}"
                 self._update_conversation_cache(bot_response, "机器人")
+                print("[自动绘图] 已将绘画结果添加到对话历史缓存")
                 
                 yield event.chain_result(chain)
+                print("[自动绘图] 图片发送完成")
                 
             except Exception as e:
                 # 绘画失败时静默处理，不干扰正常对话
-                print(f"自动绘画失败: {str(e)}")
+                print(f"[自动绘图] 自动绘画失败: {str(e)}")
                 
                 # 将失败信息也添加到对话历史缓存
                 error_response = f"绘画失败：{str(e)}"
                 self._update_conversation_cache(error_response, "机器人")
+                print("[自动绘图] 已将失败信息添加到对话历史缓存")
+        else:
+            print("[自动绘图] 判断结果: 不需要绘图")
