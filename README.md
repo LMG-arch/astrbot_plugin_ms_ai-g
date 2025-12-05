@@ -1,5 +1,7 @@
 # AstrBot AI绘画插件
-基于竹和木的 https://github.com/3451996649/astrbot_plugin_ms_aiimg 插件优化而来
+基于竹和木的 astrbot_plugin_ms_aiimg 插件优化而来
+
+https://github.com/LMG-arch/astrbot_plugin_ms_ai-g.git
 
 不懂编程全程使用ai生成代码。
 
