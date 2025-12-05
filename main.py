@@ -694,7 +694,7 @@ class ModFlux(Star):
         
         return prompt
 
-    @filter.on_message()
+    @filter.message()
     async def auto_paint_check(self, event: AstrMessageEvent):
         """
         自动绘画检查 - 在聊天过程中智能判断是否应该生成图片

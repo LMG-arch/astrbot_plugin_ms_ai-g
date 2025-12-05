@@ -1,4 +1,4 @@
-name: ms_aiimg-g
+name: ms_ai-g
 desc: 将AI接入modelscope的生图API
 help: 可以自主判断是否生成绘画
 version: v1.0
