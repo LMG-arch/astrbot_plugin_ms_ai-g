@@ -394,12 +394,12 @@ class ModFlux(Star):
             # 方法1：下载图片到本地
             try:
                 local_image_path = await self._download_image(image_url)
-                chain = [Image.fromFile(local_image_path)]
+                chain = [Image.fromFileSystem(local_image_path)]
             except Exception:
                 # 方法1失败，尝试方法2：使用base64编码
                 try:
                     image_base64 = await self._image_to_base64(image_url)
-                    chain = [Image.fromBase64(image_base64)]
+                    chain = [Image.fromURL(f"data:image/png;base64,{image_base64}")]
                 except Exception:
                     # 所有方法都失败，返回原始URL（可能会被平台拦截）
                     chain = [Image.fromURL(image_url)]
@@ -816,7 +816,7 @@ class ModFlux(Star):
                 image_url = await self._request_image(paint_prompt, self.size)
                 self.logger.info(f"[自动绘图] 图像生成完成，图片URL: {image_url}")
                 
-                # 尝试多种方式发送图片
+                # 尝试多种方式发送图片（只发送图片，不添加文字描述）
                 self.logger.info("[自动绘图] 开始发送图片...")
                 try:
                     # 方法1：下载图片到本地
@@ -824,8 +824,7 @@ class ModFlux(Star):
                     local_image_path = await self._download_image(image_url)
                     self.logger.info(f"[自动绘图] 图片下载完成，本地路径: {local_image_path}")
                     chain = [
-                        Plain(f"根据我们的对话，我为你创作了一幅画：\\n{paint_prompt}\\n"),
-                        Image.fromFile(local_image_path)
+                        Image.fromFileSystem(local_image_path)
                     ]
                 except Exception as download_error:
                     self.logger.error(f"[自动绘图] 下载图片失败: {str(download_error)}")
@@ -835,15 +834,13 @@ class ModFlux(Star):
                         image_base64 = await self._image_to_base64(image_url)
                         self.logger.info("[自动绘图] 图片base64编码完成")
                         chain = [
-                            Plain(f"根据我们的对话，我为你创作了一幅画：\\n{paint_prompt}\\n"),
-                            Image.fromBase64(image_base64)
+                            Image.fromURL(f"data:image/png;base64,{image_base64}")
                         ]
                     except Exception as base64_error:
                         self.logger.error(f"[自动绘图] base64编码失败: {str(base64_error)}")
                         # 所有方法都失败，返回原始URL（可能会被平台拦截）
                         self.logger.warning("[自动绘图] 所有方法都失败，返回原始URL")
                         chain = [
-                            Plain(f"根据我们的对话，我为你创作了一幅画：\\n{paint_prompt}\\n"),
                             Image.fromURL(image_url)
                         ]
                 
@@ -946,36 +943,33 @@ class ModFlux(Star):
             image_url = await self._request_image(prompt, self.size)
             self.logger.info(f"[命令处理] 图像生成完成，图片URL: {image_url}")
             
-            # 尝试多种方式发送图片
-            self.logger.info("[命令处理] 开始发送图片...")
-            try:
-                # 方法1：下载图片到本地
-                self.logger.info("[命令处理] 尝试下载图片到本地...")
-                local_image_path = await self._download_image(image_url)
-                self.logger.info(f"[命令处理] 图片下载完成，本地路径: {local_image_path}")
-                chain = [
-                    Plain(f"根据你的提示词，我为你创作了一幅画：\n{prompt}\n"),
-                    Image.fromFile(local_image_path)
-                ]
-            except Exception as download_error:
-                self.logger.error(f"[命令处理] 下载图片失败: {str(download_error)}")
-                # 方法1失败，尝试方法2：使用base64编码
+            # 尝试多种方式发送图片（只发送图片，不添加文字描述）
+                self.logger.info("[命令处理] 开始发送图片...")
                 try:
-                    self.logger.info("[命令处理] 尝试使用base64编码发送图片...")
-                    image_base64 = await self._image_to_base64(image_url)
-                    self.logger.info("[命令处理] 图片base64编码完成")
+                    # 方法1：下载图片到本地
+                    self.logger.info("[命令处理] 尝试下载图片到本地...")
+                    local_image_path = await self._download_image(image_url)
+                    self.logger.info(f"[命令处理] 图片下载完成，本地路径: {local_image_path}")
                     chain = [
-                        Plain(f"根据你的提示词，我为你创作了一幅画：\n{prompt}\n"),
-                        Image.fromBase64(image_base64)
+                        Image.fromFileSystem(local_image_path)
                     ]
-                except Exception as base64_error:
-                    self.logger.error(f"[命令处理] base64编码失败: {str(base64_error)}")
-                    # 所有方法都失败，返回原始URL（可能会被平台拦截）
-                    self.logger.warning("[命令处理] 所有方法都失败，返回原始URL")
-                    chain = [
-                        Plain(f"根据你的提示词，我为你创作了一幅画：\n{prompt}\n"),
-                        Image.fromURL(image_url)
-                    ]
+                except Exception as download_error:
+                    self.logger.error(f"[命令处理] 下载图片失败: {str(download_error)}")
+                    # 方法1失败，尝试方法2：使用base64编码
+                    try:
+                        self.logger.info("[命令处理] 尝试使用base64编码发送图片...")
+                        image_base64 = await self._image_to_base64(image_url)
+                        self.logger.info("[命令处理] 图片base64编码完成")
+                        chain = [
+                            Image.fromURL(f"data:image/png;base64,{image_base64}")
+                        ]
+                    except Exception as base64_error:
+                        self.logger.error(f"[命令处理] base64编码失败: {str(base64_error)}")
+                        # 所有方法都失败，返回原始URL（可能会被平台拦截）
+                        self.logger.warning("[命令处理] 所有方法都失败，返回原始URL")
+                        chain = [
+                            Image.fromURL(image_url)
+                        ]
             
             yield event.chain_result(chain)
             self.logger.info("[命令处理] 图片发送完成")

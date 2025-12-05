@@ -32,8 +32,8 @@
     "judge_llm_api_url": {
         "description": "判断是否绘画的大模型API地址",
         "type": "string",
-        "default": "",
-        "hint": "用于智能判断是否应该绘画的大模型API地址（OpenAI格式）"
+        "default": "https://api.openai.com/v1/chat/completions",
+        "hint": "用于智能判断是否应该绘画的大模型API地址（OpenAI格式），例如：https://api.openai.com/v1/chat/completions"
     },
     "judge_llm_api_key": {
         "description": "判断是否绘画的大模型API密钥",
@@ -68,7 +68,7 @@
     "enable_llm_judge": {
         "description": "启用大模型智能判断",
         "type": "bool",
-        "default": false,
+        "default": true,
         "hint": "是否启用大语言模型进行智能绘画判断"
     },
     "default_character_profile": {
