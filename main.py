@@ -349,7 +349,7 @@ class ModFlux(Star):
             yield event.plain_result(f"生成图片时遇到问题: {str(e)}")
             
     @command("aiimg")
-    async def generate_image_command(self, event: AstrMessageEvent):
+    async def generate_image_command(self, event: AstrMessageEvent, *args):
         """
         命令调用接口 - 通过/aiimg命令生成图片
         
@@ -357,6 +357,7 @@ class ModFlux(Star):
         
         Args:
             event: AstrBot消息事件对象
+            *args: 额外的参数（为兼容性保留）
             
         Yields:
             AstrBot消息事件结果，包含生成的图片和提示词信息或错误信息
@@ -408,7 +409,7 @@ class ModFlux(Star):
             yield event.plain_result(f"\n生成图片失败: {str(e)}")
 
     @command("setcharacter")
-    async def set_character_command(self, event: AstrMessageEvent):
+    async def set_character_command(self, event: AstrMessageEvent, *args):
         """
         命令调用接口 - 通过/setcharacter命令设置人物扮演形象
         
@@ -416,6 +417,7 @@ class ModFlux(Star):
         
         Args:
             event: AstrBot消息事件对象
+            *args: 额外的参数（为兼容性保留）
             
         Yields:
             AstrBot消息事件结果，包含设置成功或失败信息
