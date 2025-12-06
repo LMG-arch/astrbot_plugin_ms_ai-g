@@ -414,10 +414,9 @@ class ModFlux(Star):
                     return
 
         except Exception as e:
-            # 异常处理，返回错误信息
-            # 直接使用event.send发送错误信息，而不是plain_result
-            await event.send([Plain(f"生成图片时遇到问题: {str(e)}")])
-            return
+             # 异常处理，静默处理错误，不发送任何文字信息
+             self.logger.error(f"生成图片时遇到问题: {str(e)}")
+             return
 
     async def _should_paint(self, message: str, conversation_history: list = None) -> bool:
         """
@@ -818,7 +817,19 @@ class ModFlux(Star):
         should_paint = await self._should_paint(message, self.conversation_cache)
         
         if should_paint:
-            self.logger.info("[自动绘图] 判断结果: 需要绘图，开始执行绘画流程")
+            self.logger.info("[自动绘图] 判断结果: 需要绘图，检查时间间隔...")
+            
+            # 检查是否满足最小绘图间隔要求
+            current_time = time.time()
+            time_since_last_paint = current_time - self.last_paint_time
+            self.logger.info(f"[绘图间隔检查] 距离上次绘图已过: {time_since_last_paint:.1f}秒，最小间隔要求: {self.min_paint_interval}秒")
+            
+            if time_since_last_paint < self.min_paint_interval:
+                remaining_time = self.min_paint_interval - time_since_last_paint
+                self.logger.info(f"[绘图间隔检查] 距离上次绘图时间不足，还需等待 {remaining_time:.1f} 秒，跳过本次绘图")
+                return
+            
+            self.logger.info("[自动绘图] 间隔检查通过，开始执行绘画流程")
             try:
                 # 更新最后绘画时间
                 self.last_paint_time = time.time()
@@ -988,11 +999,9 @@ class ModFlux(Star):
                     return
             
         except Exception as e:
+            # 异常处理，静默处理错误，不发送任何文字信息
             error_msg = f"生成图片失败: {str(e)}"
             self.logger.error(f"[命令处理] {error_msg}")
-            
-            # 发送错误信息，直接使用event.send而不是plain_result
-            await event.send([Plain(error_msg)])
             return
 
     @filter.event_message_type(filter.EventMessageType.ALL)
