@@ -55,8 +55,8 @@ class ModFlux(Star):
         # 使用AstrBot提供的logger接口
         self.logger = logger
         
-        # 从配置中获取API相关参数
-        self.config = config  # 获取插件配置
+        # 使用传入的配置对象
+        self.config = config
         self.api_key = self.config.get("api_key")  # API密钥
         self.model = self.config.get("model")      # 模型名称
         self.size = self.config.get("size", "768x512")  # 默认图片尺寸
