@@ -17,16 +17,11 @@ from datetime import datetime
 # AstrBot相关导入
 from astrbot.api.all import *
 from astrbot.api.star import Star
-from astrbot.api.event import AstrMessageEvent
-
-
 # 导入register装饰器
 from astrbot.api.star import register
-from astrbot.api.event import filter
-from astrbot.api.event import AstrMessageEvent, AstrBotEvent
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.platform import Platform
 from astrbot.core.star import Star
-from astrbot.core.star.astr_bot_event import AstrBotEvent
 from astrbot.core.star.context import Context
 from astrbot.core.config.astr_bot_config import AstrBotConfig
 
