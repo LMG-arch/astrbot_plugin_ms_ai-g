@@ -904,16 +904,18 @@ class ModFlux(Star):
         """
         self.logger.info("[配置更新] 接收到新的配置")
         
-        # 临时转换为字典以便使用get方法
-        if hasattr(new_config, 'get'):
+        # 处理AstrBotConfig对象，确保能正确提取配置值
+        config_dict = {}
+        if isinstance(new_config, dict):
+            config_dict = new_config
+        elif hasattr(new_config, '__dict__'):
+            # 如果是对象，转换为字典
+            config_dict = vars(new_config)
+        elif hasattr(new_config, 'get'):
+            # 如果已经有get方法，直接使用
             config_dict = new_config
         else:
-            # 如果new_config不是字典类型，将其转换为字典
-            config_dict = {}
-            if hasattr(new_config, '__dict__'):
-                config_dict = vars(new_config)
-            else:
-                config_dict = str(new_config)
+            self.logger.warning("[配置更新] 无法识别的配置类型，使用空配置")
         
         # 更新配置字典
         self.config = config_dict if isinstance(config_dict, dict) else {}
