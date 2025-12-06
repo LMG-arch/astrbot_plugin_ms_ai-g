@@ -20,60 +20,45 @@ from astrbot.api.star import Star
 from astrbot.api.event import AstrMessageEvent
 
 
+# 导入register装饰器
+from astrbot.api.star import register
+from astrbot.api.event import filter
+from astrbot.api.event import AstrMessageEvent, AstrBotEvent
+from astrbot.api.platform import Platform
+from astrbot.core.star import Star
+from astrbot.core.star.astr_bot_event import AstrBotEvent
+from astrbot.core.star.context import Context
+from astrbot.core.config.astr_bot_config import AstrBotConfig
+
+
+@register("ms_aiimg", "AI绘画插件", "基于魔搭社区的AI绘画生成插件", "1.08")
 class ModFlux(Star):
     """
     魔搭社区文生图插件
     支持通过命令或LLM智能判断生成图片
     """
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, context, config=None):
         """
         初始化插件
         
-        兼容多种实例化方式：
-        - ModFlux()
-        - ModFlux(context)
-        - ModFlux(context, config)
-        - ModFlux(context=self.context, config=plugin_config)
+        Args:
+            context: AstrBot上下文对象
+            config: 插件配置对象(AstrBotConfig)，可选
         """
         # 初始化logger
         self.logger = logger
         
         # 记录初始化信息
-        self.logger.info(f"[初始化] 开始初始化ModFlux插件，参数: args={len(args)}, kwargs={list(kwargs.keys())}")
-        
-        # 处理不同版本的AstrBot实例化方式
-        context = None
-        config = None
-        
-        # 尝试从args中获取参数
-        if len(args) >= 1:
-            context = args[0]
-        if len(args) >= 2:
-            config = args[1]
-        
-        # 尝试从kwargs中获取参数
-        if 'context' in kwargs:
-            context = kwargs['context']
-        if 'config' in kwargs:
-            config = kwargs['config']
+        self.logger.info(f"[初始化] 开始初始化ModFlux插件，config: {config is not None}")
         
         # 调用父类构造函数
         try:
-            if context is not None:
-                super().__init__(context)
-                self.logger.info("[初始化] 使用context参数调用父类构造函数")
-            else:
-                super().__init__()
-                self.logger.info("[初始化] 无context参数调用父类构造函数")
+            super().__init__(context)
+            self.logger.info("[初始化] 父类构造函数调用成功")
         except Exception as e:
             self.logger.error(f"[初始化] 调用父类构造函数失败: {str(e)}")
-            # 尝试不带参数调用
-            try:
-                super().__init__()
-                self.logger.info("[初始化] 回退到无参数调用父类构造函数")
-            except Exception as e2:
-                self.logger.error(f"[初始化] 无参数调用父类构造函数也失败: {str(e2)}")
+            raise
         
         # 初始化配置变量
         try:
@@ -81,11 +66,6 @@ class ModFlux(Star):
             if config is not None:
                 self.config = config
                 self.logger.info(f"[初始化] 配置参数已接收，类型: {type(config)}")
-            # 兼容旧版本，可能从context中获取配置
-            elif context is not None and hasattr(context, 'config') and context.config is not None:
-                self.config = context.config
-                self.logger.info("[初始化] 从context获取配置")
-            # 使用默认空配置
             else:
                 self.config = {}
                 self.logger.info("[初始化] 使用默认空配置")
@@ -230,23 +210,21 @@ class ModFlux(Star):
         
         # 处理不同类型的配置对象，确保能正确提取配置值
         try:
-            config_dict = {}
-            if isinstance(new_config, dict):
-                config_dict = new_config
+            # AstrBotConfig继承自Dict，可以直接使用
+            if hasattr(new_config, 'get') and callable(new_config.get):
+                self.config = new_config
+                self.logger.info("[配置更新] 配置为AstrBotConfig或字典类型，直接使用")
+            elif isinstance(new_config, dict):
+                self.config = new_config
                 self.logger.info("[配置更新] 配置为字典类型")
             elif hasattr(new_config, '__dict__'):
                 # 如果是对象，转换为字典
-                config_dict = vars(new_config)
+                self.config = vars(new_config)
                 self.logger.info("[配置更新] 配置为对象类型，已转换为字典")
-            elif hasattr(new_config, 'get'):
-                # 如果已经有get方法，直接使用
-                config_dict = new_config
-                self.logger.info("[配置更新] 配置已有get方法，直接使用")
             else:
                 self.logger.warning(f"[配置更新] 无法识别的配置类型: {type(new_config)}，使用空配置")
+                self.config = {}
             
-            # 更新配置字典
-            self.config = config_dict if isinstance(config_dict, dict) else {}
             self.logger.info("[配置更新] 配置字典已更新")
             
         except Exception as e:
