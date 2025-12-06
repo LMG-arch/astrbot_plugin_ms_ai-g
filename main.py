@@ -18,9 +18,6 @@ from datetime import datetime
 from astrbot.api.all import *
 from astrbot.api.star import Star
 from astrbot.api.event import AstrMessageEvent
-from astrbot.api.core import Context
-from astrbot.api import logger
-from astrbot.api import AstrBotConfig
 
 
 class ModFlux(Star):
@@ -29,28 +26,54 @@ class ModFlux(Star):
     支持通过命令或LLM智能判断生成图片
     """
     
-    def __init__(self, context: Context = None, config: AstrBotConfig = None, **kwargs):
+    def __init__(self, *args, **kwargs):
         """
         初始化插件
         
-        Args:
-            context: AstrBot上下文对象（可选，兼容不同版本）
-            config: 插件配置对象（可选）
-            **kwargs: 额外的关键字参数（兼容未来版本）
+        兼容多种实例化方式：
+        - ModFlux()
+        - ModFlux(context)
+        - ModFlux(context, config)
+        - ModFlux(context=self.context, config=plugin_config)
         """
-        # 首先调用父类构造函数，确保context正确设置
-        if context is None:
-            # 某些版本可能不传context
-            logger.info("[初始化] 未接收到context参数，使用默认初始化")
-            super().__init__()
-        else:
-            super().__init__(context)
-        
-        # 使用AstrBot提供的logger接口
+        # 初始化logger
         self.logger = logger
         
         # 记录初始化信息
-        self.logger.info(f"[初始化] 开始初始化ModFlux插件")
+        self.logger.info(f"[初始化] 开始初始化ModFlux插件，参数: args={len(args)}, kwargs={list(kwargs.keys())}")
+        
+        # 处理不同版本的AstrBot实例化方式
+        context = None
+        config = None
+        
+        # 尝试从args中获取参数
+        if len(args) >= 1:
+            context = args[0]
+        if len(args) >= 2:
+            config = args[1]
+        
+        # 尝试从kwargs中获取参数
+        if 'context' in kwargs:
+            context = kwargs['context']
+        if 'config' in kwargs:
+            config = kwargs['config']
+        
+        # 调用父类构造函数
+        try:
+            if context is not None:
+                super().__init__(context)
+                self.logger.info("[初始化] 使用context参数调用父类构造函数")
+            else:
+                super().__init__()
+                self.logger.info("[初始化] 无context参数调用父类构造函数")
+        except Exception as e:
+            self.logger.error(f"[初始化] 调用父类构造函数失败: {str(e)}")
+            # 尝试不带参数调用
+            try:
+                super().__init__()
+                self.logger.info("[初始化] 回退到无参数调用父类构造函数")
+            except Exception as e2:
+                self.logger.error(f"[初始化] 无参数调用父类构造函数也失败: {str(e2)}")
         
         # 初始化配置变量
         try:
@@ -59,7 +82,7 @@ class ModFlux(Star):
                 self.config = config
                 self.logger.info(f"[初始化] 配置参数已接收，类型: {type(config)}")
             # 兼容旧版本，可能从context中获取配置
-            elif hasattr(context, 'config') and context.config is not None:
+            elif context is not None and hasattr(context, 'config') and context.config is not None:
                 self.config = context.config
                 self.logger.info("[初始化] 从context获取配置")
             # 使用默认空配置
@@ -105,133 +128,75 @@ class ModFlux(Star):
         # 初始化对话缓存（从文件加载）
         self.conversation_cache = self._load_conversation_cache()
         
-        # 人物扮演形象配置
+        # 人物形象设定
         self.character_profile = ""
         
-        # 创建临时目录用于存储下载的图片
+        # 临时目录
         self.temp_dir_name = "astrbot_images"
         self.temp_dir = Path(tempfile.gettempdir()) / self.temp_dir_name
         self.temp_dir.mkdir(exist_ok=True)
-
-        # 验证必要配置将在on_config_update中进行
-        self.logger.info("[初始化] 魔搭社区文生图插件初始化完成")
-    
-    def _load_conversation_cache(self) -> list:
-        """
-        从文件加载对话历史缓存
         
-        Returns:
-            list: 对话历史缓存列表
-        """
+        # 插件初始化完成
+        self.logger.info("[初始化] ModFlux插件初始化完成")
+        
+        # 如果有配置，立即更新
+        if self.config:
+            self.on_config_update(self.config)
+    
+    def _load_conversation_cache(self) -> List[Dict]:
+        """从文件加载对话缓存"""
         cache_file = self.data_dir / "conversation_cache.json"
         try:
             if cache_file.exists():
-                with open(cache_file, "r", encoding="utf-8") as f:
-                    cache_data = json.load(f)
-                self.logger.info(f"[缓存加载] 成功加载对话缓存，共 {len(cache_data)} 条记录")
-                return cache_data
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
         except Exception as e:
-            self.logger.warning(f"[缓存加载] 加载对话缓存失败: {str(e)}")
-        
+            self.logger.error(f"[缓存] 加载对话缓存失败: {str(e)}")
         return []
-
+    
     def _save_conversation_cache(self):
-        """
-        保存对话历史缓存到文件
-        """
+        """保存对话缓存到文件"""
         cache_file = self.data_dir / "conversation_cache.json"
         try:
-            with open(cache_file, "w", encoding="utf-8") as f:
+            with open(cache_file, 'w', encoding='utf-8') as f:
                 json.dump(self.conversation_cache, f, ensure_ascii=False, indent=2)
-            self.logger.debug("[缓存保存] 对话缓存已保存到文件")
         except Exception as e:
-            self.logger.warning(f"[缓存保存] 保存对话缓存失败: {str(e)}")
-
-    def _update_conversation_cache(self, content: str, role: str):
-        """
-        更新对话历史缓存
-        
-        Args:
-            content: 对话内容
-            role: 角色（用户/机器人）
-        """
-        # 添加新的对话记录
-        self.conversation_cache.append({
-            "role": role,
-            "content": content,
+            self.logger.error(f"[缓存] 保存对话缓存失败: {str(e)}")
+    
+    def add_to_conversation_cache(self, user_id: str, user_message: str, bot_response: str):
+        """添加对话到缓存"""
+        # 创建新对话记录
+        conversation = {
+            "user_id": user_id,
+            "user_message": user_message,
+            "bot_response": bot_response,
             "timestamp": time.time()
-        })
+        }
         
-        # 限制缓存大小，移除最旧的记录
+        # 添加到缓存
+        self.conversation_cache.append(conversation)
+        
+        # 限制缓存大小
         if len(self.conversation_cache) > self.max_cache_size:
-            self.conversation_cache.pop(0)
+            self.conversation_cache = self.conversation_cache[-self.max_cache_size:]
         
-        # 保存更新后的缓存
+        # 保存到文件
         self._save_conversation_cache()
     
     def set_character_profile(self, profile: str):
-        """
-        设置人物扮演形象描述
-        
-        Args:
-            profile: 人物扮演形象描述文本
-        """
+        """设置人物形象"""
         self.character_profile = profile
-        self.logger.info(f"已设置人物扮演形象：{profile}")
-
-    async def _download_image(self, image_url: str) -> str:
+        self.logger.info(f"[设定] 人物形象已设置: {profile[:50]}...")
+    
+    async def image_to_base64(self, image_url: str) -> str:
         """
-        下载图片到本地，返回本地文件路径
-        
-        Args:
-            image_url: 远程图片URL
-            
-        Returns:
-            str: 本地图片文件路径
-        """
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(image_url) as response:
-                    if response.status == 200:
-                        # 生成唯一的文件名
-                        filename = hashlib.md5(image_url.encode()).hexdigest() + ".png"
-                        file_path = self.temp_dir / filename
-                        
-                        # 下载图片数据
-                        image_data = await response.read()
-                        
-                        # 保存到本地文件
-                        with open(file_path, "wb") as f:
-                            f.write(image_data)
-                        
-                        self.logger.debug(f"图片下载成功，保存路径: {file_path}")
-                        return str(file_path)
-                    else:
-                        error_msg = f"下载图片失败，HTTP状态码: {response.status}"
-                        self.logger.error(error_msg)
-                        raise Exception(error_msg)
-        except aiohttp.ClientError as e:
-            error_msg = f"网络请求错误: {str(e)}"
-            self.logger.error(error_msg)
-            raise Exception(error_msg)
-        except IOError as e:
-            error_msg = f"文件操作错误: {str(e)}"
-            self.logger.error(error_msg)
-            raise Exception(error_msg)
-        except Exception as e:
-            error_msg = f"图片下载过程中发生未知错误: {str(e)}"
-            self.logger.error(error_msg)
-            raise Exception(error_msg)
-
-    async def _image_to_base64(self, image_url: str) -> str:
-        """
-        将图片转换为base64编码
+        将图片URL转换为base64编码
         
         Args:
             image_url: 图片URL
             
         Returns:
-            str: base64编码的图片数据
+            图片的base64编码
         """
         try:
             async with aiohttp.ClientSession() as session:
@@ -254,16 +219,16 @@ class ModFlux(Star):
             self.logger.error(error_msg)
             raise Exception(error_msg)
 
-    def on_config_update(self, new_config: AstrBotConfig):
+    def on_config_update(self, new_config):
         """
         配置更新回调 - 当插件配置被更新时调用
         
         Args:
-            new_config: 更新后的配置对象（AstrBotConfig）
+            new_config: 更新后的配置对象（可能是AstrBotConfig、dict或其他类型）
         """
         self.logger.info(f"[配置更新] 接收到新的配置，类型: {type(new_config)}")
         
-        # 处理AstrBotConfig对象，确保能正确提取配置值
+        # 处理不同类型的配置对象，确保能正确提取配置值
         try:
             config_dict = {}
             if isinstance(new_config, dict):
@@ -318,220 +283,346 @@ class ModFlux(Star):
         
         self.logger.info(f"[配置更新] 配置更新完成，当前配置项数: {len(self.config)}")
 
-    @filter.event_message_type
-    async def on_message(self, event: AstrMessageEvent) -> None:
+    async def generate_image(self, prompt: str, user_id: str = None) -> Optional[str]:
         """
-        监听消息事件 - 用于智能绘画判断
+        生成图片
         
         Args:
-            event: 消息事件对象
-        """
-        # 如果未启用LLM智能判断，直接返回
-        if not self.enable_llm_judge:
-            return
-            
-        try:
-            # 获取消息内容
-            message_content = event.get_message_content()
-            
-            # 更新对话缓存
-            self._update_conversation_cache(message_content, "user")
-            
-            # 检查是否应该生成图片
-            should_paint = await self._should_generate_image(message_content)
-            
-            if should_paint:
-                # 生成图片提示词
-                prompt = await self._generate_image_prompt(message_content)
-                
-                # 调用图片生成
-                await self._generate_and_send_image(event, prompt)
-                
-        except Exception as e:
-            self.logger.error(f"[消息处理] 处理消息时发生错误: {str(e)}")
-
-    async def _should_generate_image(self, message_content: str) -> bool:
-        """
-        判断是否应该生成图片
-        
-        Args:
-            message_content: 消息内容
+            prompt: 图片生成提示词
+            user_id: 用户ID（用于记录）
             
         Returns:
-            bool: 是否应该生成图片
+            生成的图片URL，失败返回None
         """
-        current_time = time.time()
+        # 检查API密钥
+        if not self.api_key:
+            self.logger.error("[图片生成] API密钥未配置")
+            return None
         
-        # 检查时间间隔
-        if current_time - self.last_paint_time < self.min_paint_interval:
-            return False
-        
-        # 简单的关键词判断
-        image_keywords = ["图片", "图像", "画", "图", "photo", "image", "picture", "draw", "paint"]
-        has_image_keyword = any(keyword in message_content.lower() for keyword in image_keywords)
-        
-        if not has_image_keyword:
-            return False
-        
-        # 概率判断
-        import random
-        if random.random() > self.paint_probability:
-            return False
-        
-        return True
-
-    async def _generate_image_prompt(self, message_content: str) -> str:
-        """
-        生成图片提示词
-        
-        Args:
-            message_content: 消息内容
-            
-        Returns:
-            str: 生成的图片提示词
-        """
-        # 简单的提示词生成逻辑
-        prompt = f"基于以下描述生成图片: {message_content}"
-        
-        # 如果有角色设定，添加到提示词中
+        # 添加人物形象到提示词
         if self.character_profile:
             prompt = f"角色设定: {self.character_profile}\n{prompt}"
         
-        return prompt
-
-    async def _generate_and_send_image(self, event: AstrMessageEvent, prompt: str):
-        """
-        生成并发送图片
-        
-        Args:
-            event: 消息事件对象
-            prompt: 图片提示词
-        """
-        try:
-            # 调用图片生成API
-            image_url = await self._generate_image(prompt)
-            
-            if image_url:
-                # 下载图片到本地
-                local_path = await self._download_image(image_url)
-                
-                # 发送图片
-                await event.send_message(MessageSegment.image(local_path))
-                
-                # 更新最后绘画时间
-                self.last_paint_time = time.time()
-                
-                # 更新对话缓存
-                self._update_conversation_cache(f"[生成了图片: {prompt}]", "assistant")
-                
-                self.logger.info(f"[图片生成] 成功生成并发送图片，提示词: {prompt}")
-            
-        except Exception as e:
-            self.logger.error(f"[图片生成] 生成图片失败: {str(e)}")
-            await event.send_message(f"图片生成失败: {str(e)}")
-
-    async def _generate_image(self, prompt: str) -> str:
-        """
-        调用API生成图片
-        
-        Args:
-            prompt: 图片提示词
-            
-        Returns:
-            str: 生成的图片URL
-        """
-        if not self.api_key:
-            raise Exception("API密钥未配置")
-        
-        if not self.model:
-            raise Exception("模型名称未配置")
-        
-        # 构建请求数据
-        request_data = {
-            "model": self.model,
-            "prompt": prompt,
-            "size": self.size,
-            "n": 1
-        }
-        
+        # 构建请求参数
+        url = f"{self.api_url}v1/stable_diffusion/text2img"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
         
+        data = {
+            "model": self.model or "AI-ModelScope/stable-diffusion-xl-base-1.0",
+            "prompt": prompt,
+            "negative_prompt": "low quality, worst quality, blurry, watermark, signature",
+            "width": int(self.size.split("x")[0]) if "x" in self.size else 768,
+            "height": int(self.size.split("x")[1]) if "x" in self.size else 512,
+            "steps": 30,
+            "guidance_scale": 7.5,
+            "num_images": 1
+        }
+        
         try:
+            self.logger.info(f"[图片生成] 开始生成图片，提示词: {prompt[:50]}...")
+            
             async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.api_url,
-                    headers=headers,
-                    json=request_data
-                ) as response:
+                async with session.post(url, headers=headers, json=data) as response:
                     if response.status == 200:
                         result = await response.json()
-                        
-                        # 解析响应，获取图片URL
-                        if "data" in result and len(result["data"]) > 0:
-                            image_url = result["data"][0].get("url", "")
+                        images = result.get("images", [])
+                        if images:
+                            image_url = images[0].get("url")
                             if image_url:
-                                self.logger.info(f"[API调用] 图片生成成功，URL: {image_url}")
+                                self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
                                 return image_url
                             else:
-                                raise Exception("API响应中未找到图片URL")
+                                self.logger.error("[图片生成] 响应中未找到图片URL")
                         else:
-                            raise Exception("API响应格式错误")
+                            self.logger.error("[图片生成] 响应中未找到图片")
                     else:
                         error_text = await response.text()
-                        raise Exception(f"API调用失败，状态码: {response.status}, 响应: {error_text}")
-                        
-        except aiohttp.ClientError as e:
-            raise Exception(f"网络请求错误: {str(e)}")
-        except json.JSONDecodeError as e:
-            raise Exception(f"JSON解析错误: {str(e)}")
+                        self.logger.error(f"[图片生成] API请求失败，状态码: {response.status}, 错误: {error_text}")
         except Exception as e:
-            raise Exception(f"图片生成过程中发生错误: {str(e)}")
-
-    @filter.command("aiimg")
-    async def aiimg_command(self, event: AstrMessageEvent, prompt: str):
+            self.logger.error(f"[图片生成] 生成图片时发生错误: {str(e)}")
+        
+        return None
+    
+    async def download_image(self, image_url: str) -> Optional[str]:
         """
-        AI图片生成命令
+        下载图片到本地
+        
+        Args:
+            image_url: 图片URL
+            
+        Returns:
+            本地图片路径，失败返回None
+        """
+        try:
+            # 生成文件名
+            timestamp = int(time.time())
+            hash_obj = hashlib.md5(image_url.encode())
+            file_name = f"img_{timestamp}_{hash_obj.hexdigest()[:8]}.jpg"
+            file_path = self.temp_dir / file_name
+            
+            # 下载图片
+            async with aiohttp.ClientSession() as session:
+                async with session.get(image_url) as response:
+                    if response.status == 200:
+                        with open(file_path, 'wb') as f:
+                            f.write(await response.read())
+                        self.logger.info(f"[图片下载] 图片下载成功，路径: {file_path}")
+                        return str(file_path)
+                    else:
+                        self.logger.error(f"[图片下载] 下载失败，状态码: {response.status}")
+        except Exception as e:
+            self.logger.error(f"[图片下载] 下载图片时发生错误: {str(e)}")
+        
+        return None
+    
+    async def should_paint(self, message: str, user_id: str) -> bool:
+        """
+        判断是否应该触发绘画
+        
+        Args:
+            message: 用户消息
+            user_id: 用户ID
+            
+        Returns:
+            是否应该绘画
+        """
+        # 如果未启用LLM智能判断，使用随机概率
+        if not self.enable_llm_judge:
+            import random
+            should = random.random() < self.paint_probability
+            self.logger.info(f"[智能判断] 随机判断结果: {should} (概率: {self.paint_probability})")
+            return should
+        
+        # 检查是否在最小间隔时间内
+        current_time = time.time()
+        if current_time - self.last_paint_time < self.min_paint_interval:
+            self.logger.info("[智能判断] 在最小间隔时间内，跳过绘画")
+            return False
+        
+        # 如果没有配置LLM API，使用随机概率
+        if not self.judge_llm_api_key or not self.judge_llm_api_url:
+            import random
+            should = random.random() < self.paint_probability
+            self.logger.info(f"[智能判断] 未配置LLM API，使用随机判断结果: {should}")
+            return should
+        
+        # 构建判断提示词
+        judge_prompt = f"""
+请判断以下用户消息是否适合生成图片：
+
+用户消息: {message}
+
+请考虑以下因素：
+1. 消息是否描述了具体的场景、人物或物体
+2. 消息是否包含视觉元素
+3. 消息是否表达了情感或氛围
+4. 消息是否过于抽象或难以可视化
+
+请只回答"是"或"否"，不要添加其他解释。
+"""
+        
+        try:
+            # 构建请求参数
+            headers = {
+                "Authorization": f"Bearer {self.judge_llm_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": self.judge_llm_model,
+                "messages": [
+                    {"role": "user", "content": judge_prompt}
+                ],
+                "max_tokens": 10,
+                "temperature": 0.1
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(self.judge_llm_api_url, headers=headers, json=data) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                        should = "是" in content
+                        self.logger.info(f"[智能判断] LLM判断结果: {content} -> {should}")
+                        return should
+                    else:
+                        error_text = await response.text()
+                        self.logger.error(f"[智能判断] API请求失败，状态码: {response.status}, 错误: {error_text}")
+        except Exception as e:
+            self.logger.error(f"[智能判断] 判断时发生错误: {str(e)}")
+        
+        # 出错时使用随机概率
+        import random
+        should = random.random() < self.paint_probability
+        self.logger.info(f"[智能判断] 出错，使用随机判断结果: {should}")
+        return should
+    
+    async def generate_prompt(self, message: str, user_id: str) -> str:
+        """
+        基于用户消息和对话历史生成绘画提示词
+        
+        Args:
+            message: 用户消息
+            user_id: 用户ID
+            
+        Returns:
+            生成的绘画提示词
+        """
+        # 如果没有配置LLM API，直接使用用户消息
+        if not self.prompt_llm_api_key or not self.prompt_llm_api_url:
+            self.logger.info("[提示词生成] 未配置LLM API，直接使用用户消息")
+            return message
+        
+        # 获取相关对话历史
+        recent_conversations = [c for c in self.conversation_cache if c["user_id"] == user_id][-5:]
+        conversation_text = ""
+        for conv in recent_conversations:
+            conversation_text += f"用户: {conv['user_message']}\n助手: {conv['bot_response']}\n"
+        
+        # 构建提示词生成请求
+        prompt_gen_prompt = f"""
+基于以下对话历史和当前用户消息，生成一个适合文生图模型的英文提示词。
+
+人物形象设定: {self.character_profile}
+
+对话历史:
+{conversation_text}
+
+当前用户消息: {message}
+
+请生成一个详细的英文提示词，包括:
+1. 主要主体和场景描述
+2. 艺术风格和媒介
+3. 光照和色彩
+4. 构图和视角
+5. 情感和氛围
+
+只返回提示词，不要添加其他解释。
+"""
+        
+        try:
+            # 构建请求参数
+            headers = {
+                "Authorization": f"Bearer {self.prompt_llm_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": self.prompt_llm_model,
+                "messages": [
+                    {"role": "user", "content": prompt_gen_prompt}
+                ],
+                "max_tokens": 500,
+                "temperature": 0.7
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(self.prompt_llm_api_url, headers=headers, json=data) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                        self.logger.info(f"[提示词生成] 生成成功: {content[:100]}...")
+                        return content
+                    else:
+                        error_text = await response.text()
+                        self.logger.error(f"[提示词生成] API请求失败，状态码: {response.status}, 错误: {error_text}")
+        except Exception as e:
+            self.logger.error(f"[提示词生成] 生成提示词时发生错误: {str(e)}")
+        
+        # 出错时直接使用用户消息
+        self.logger.info("[提示词生成] 出错，直接使用用户消息")
+        return message
+    
+    async def handle_message(self, event: AstrMessageEvent) -> None:
+        """
+        处理消息事件，用于智能绘画判断
         
         Args:
             event: 消息事件对象
-            prompt: 图片提示词
         """
-        try:
-            self.logger.info(f"[命令调用] 收到图片生成请求，提示词: {prompt}")
+        # 只处理文本消息
+        if not event.message_str:
+            return
+        
+        # 获取用户ID和消息
+        user_id = str(event.sender.user_id)
+        message = event.message_str
+        
+        # 判断是否应该绘画
+        should = await self.should_paint(message, user_id)
+        
+        if should:
+            self.logger.info(f"[智能绘画] 触发绘画，用户: {user_id}, 消息: {message[:50]}...")
+            
+            # 生成提示词
+            prompt = await self.generate_prompt(message, user_id)
             
             # 生成图片
-            image_url = await self._generate_image(prompt)
+            image_url = await self.generate_image(prompt, user_id)
             
             if image_url:
                 # 下载图片到本地
-                local_path = await self._download_image(image_url)
+                image_path = await self.download_image(image_url)
                 
-                # 发送图片
-                await event.send_message(MessageSegment.image(local_path))
-                
-                self.logger.info(f"[命令调用] 图片生成成功，提示词: {prompt}")
+                if image_path:
+                    # 发送图片
+                    chain = [image_path]
+                    await self.send(event, chain)
+                    self.logger.info(f"[智能绘画] 图片已发送: {image_path}")
+                else:
+                    # 如果下载失败，发送URL
+                    await self.send(event, f"图片生成成功: {image_url}")
+                    self.logger.info(f"[智能绘画] 图片URL已发送: {image_url}")
+            else:
+                await self.send(event, "抱歉，图片生成失败，请稍后再试。")
+                self.logger.error("[智能绘画] 图片生成失败")
             
-        except Exception as e:
-            self.logger.error(f"[命令调用] 图片生成失败: {str(e)}")
-            await event.send_message(f"图片生成失败: {str(e)}")
-
-
-# 插件元数据
-def create_plugin_metadata():
-    """
-    创建插件元数据
+            # 更新最后绘画时间
+            self.last_paint_time = time.time()
+        
+        # 添加到对话缓存
+        # 注意：这里假设bot_response是空字符串，因为我们没有处理bot的实际回复
+        # 在实际使用中，你可能需要从其他地方获取bot的回复
+        self.add_to_conversation_cache(user_id, message, "")
     
-    Returns:
-        PluginMetadata: 插件元数据对象
-    """
-    return PluginMetadata(
-        name="ms_ai-g",
-        version="1.07",
-        description="接入魔搭社区文生图模型。支持LLM调用和命令调用。",
-        author="LMG-arch",
-        url="https://github.com/LMG-arch/astrbot_plugin_ms_ai-g.git",
-        star_cls=ModFlux
-    )
+    @filter.command("aiimg")
+    async def aiimg_command(self, event: AstrMessageEvent, prompt: str = ""):
+        """
+        /aiimg 命令处理函数
+        
+        Args:
+            event: 消息事件对象
+            prompt: 图片生成提示词
+        """
+        # 获取用户ID
+        user_id = str(event.sender.user_id)
+        
+        # 如果没有提供提示词，提示用户
+        if not prompt:
+            await self.send(event, "请提供图片生成提示词，例如：/aiimg 一只可爱的猫咪")
+            return
+        
+        self.logger.info(f"[命令绘画] 用户: {user_id}, 提示词: {prompt}")
+        
+        # 生成图片
+        image_url = await self.generate_image(prompt, user_id)
+        
+        if image_url:
+            # 下载图片到本地
+            image_path = await self.download_image(image_url)
+            
+            if image_path:
+                # 发送图片
+                chain = [image_path]
+                await self.send(event, chain)
+                self.logger.info(f"[命令绘画] 图片已发送: {image_path}")
+            else:
+                # 如果下载失败，发送URL
+                await self.send(event, f"图片生成成功: {image_url}")
+                self.logger.info(f"[命令绘画] 图片URL已发送: {image_url}")
+        else:
+            await self.send(event, "抱歉，图片生成失败，请稍后再试。")
+            self.logger.error("[命令绘画] 图片生成失败")

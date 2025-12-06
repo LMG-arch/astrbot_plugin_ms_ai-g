@@ -1,0 +1,19 @@
+{
+  "api_key": "",
+  "api_url": "https://modelscope.cn/api/v1/",
+  "model": "",
+  "size": "768x512",
+  "provider": "ms",
+  "enable_llm_judge": false,
+  "paint_probability": 0.3,
+  "min_paint_interval": 300,
+  "judge_llm_api_url": "",
+  "judge_llm_api_key": "",
+  "judge_llm_model": "gpt-3.5-turbo",
+  "prompt_llm_api_url": "",
+  "prompt_llm_api_key": "",
+  "prompt_llm_model": "gpt-3.5-turbo",
+  "max_cache_size": 10,
+  "default_character_profile": "",
+  "temp_dir_name": "astrbot_images"
+}
