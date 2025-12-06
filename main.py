@@ -42,12 +42,13 @@ class ModFlux(Star):
     继承自AstrBot的Star基类，提供图像生成功能
     """
     
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig = None):
         """
         初始化插件
         
         Args:
             context: AstrBot上下文对象
+            config: 插件配置对象
         """
         super().__init__(context)
         
@@ -55,7 +56,7 @@ class ModFlux(Star):
         self.logger = logger
         
         # 初始化配置变量（这些将通过on_config_update方法设置）
-        self.config = {}
+        self.config = config if config is not None else {}
         self.api_key = ""
         self.model = ""
         self.size = "768x512"
