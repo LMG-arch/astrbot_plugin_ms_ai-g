@@ -517,7 +517,7 @@ class ModFlux(Star):
             return
         
         # 获取用户ID和消息
-        user_id = str(event.sender.user_id)
+        user_id = str(event.message_obj.sender.user_id)
         message = event.message_str
         
         # 判断是否应该绘画
@@ -567,7 +567,7 @@ class ModFlux(Star):
             prompt: 图片生成提示词
         """
         # 获取用户ID
-        user_id = str(event.sender.user_id)
+        user_id = str(event.message_obj.sender.user_id)
         
         # 如果没有提供提示词，提示用户
         if not prompt:
