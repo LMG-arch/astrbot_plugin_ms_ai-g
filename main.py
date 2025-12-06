@@ -1004,5 +1004,4 @@ class ModFlux(Star):
             event: AstrMessageEvent对象，包含消息的完整信息
         """
         # 调用自动绘画检查功能
-        async for result in self.auto_paint_check(event):
-            yield result
+        await self.auto_paint_check(event)
