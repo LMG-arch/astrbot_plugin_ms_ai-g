@@ -16,14 +16,10 @@ from datetime import datetime
 
 # AstrBot相关导入
 from astrbot.api.all import *
-from astrbot.api.star import Star
-# 导入register装饰器
-from astrbot.api.star import register
+from astrbot.api.star import Star, register
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.platform import Platform
-from astrbot.core.star import Star
-from astrbot.core.star.context import Context
-from astrbot.core.config.astr_bot_config import AstrBotConfig
+from astrbot.api import AstrBotConfig
 
 
 @register("ms_aiimg", "AI绘画插件", "基于魔搭社区的AI绘画生成插件", "1.08")
