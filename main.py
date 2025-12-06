@@ -29,15 +29,16 @@ class ModFlux(Star):
     支持通过命令或LLM智能判断生成图片
     """
     
-    def __init__(self, context: Context = None, config: AstrBotConfig = None):
+    def __init__(self, context: Context = None, config: AstrBotConfig = None, **kwargs):
         """
         初始化插件
         
         Args:
             context: AstrBot上下文对象（可选，兼容不同版本）
             config: 插件配置对象（可选）
+            **kwargs: 额外的关键字参数（兼容未来版本）
         """
-        # 处理不同版本的AstrBot实例化方式
+        # 首先调用父类构造函数，确保context正确设置
         if context is None:
             # 某些版本可能不传context
             logger.info("[初始化] 未接收到context参数，使用默认初始化")
@@ -49,13 +50,19 @@ class ModFlux(Star):
         self.logger = logger
         
         # 记录初始化信息
-        self.logger.info(f"[初始化] 开始初始化ModFlux插件，配置类型: {type(config)}")
+        self.logger.info(f"[初始化] 开始初始化ModFlux插件")
         
-        # 初始化配置变量（这些将通过on_config_update方法设置）
+        # 初始化配置变量
         try:
+            # 优先使用传入的config参数
             if config is not None:
                 self.config = config
-                self.logger.info("[初始化] 配置参数已接收")
+                self.logger.info(f"[初始化] 配置参数已接收，类型: {type(config)}")
+            # 兼容旧版本，可能从context中获取配置
+            elif hasattr(context, 'config') and context.config is not None:
+                self.config = context.config
+                self.logger.info("[初始化] 从context获取配置")
+            # 使用默认空配置
             else:
                 self.config = {}
                 self.logger.info("[初始化] 使用默认空配置")
