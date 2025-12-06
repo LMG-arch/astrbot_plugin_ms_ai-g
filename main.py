@@ -42,48 +42,46 @@ class ModFlux(Star):
     继承自AstrBot的Star基类，提供图像生成功能
     """
     
-    def __init__(self, context: Context, config: AstrBotConfig):
+    def __init__(self, context: Context):
         """
         初始化插件
         
         Args:
             context: AstrBot上下文对象
-            config: 插件配置对象（AstrBotConfig）
         """
         super().__init__(context)
-        # 存储配置对象以便后续使用
-        self.config = config
         
         # 使用AstrBot提供的logger接口
         self.logger = logger
         
         # 从配置中获取API相关参数
-        self.api_key = config.get("api_key")  # API密钥
-        self.model = config.get("model")      # 模型名称
-        self.size = config.get("size", "768x512")  # 默认图片尺寸
-        self.api_url = config.get("api_url", "https://modelscope.cn/api/v1/")  # API基础URL
-        self.provider = config.get("provider", "ms")  # 提供商，默认为ModelScope
+        self.config = self.context.config  # 获取插件配置
+        self.api_key = self.config.get("api_key")  # API密钥
+        self.model = self.config.get("model")      # 模型名称
+        self.size = self.config.get("size", "768x512")  # 默认图片尺寸
+        self.api_url = self.config.get("api_url", "https://modelscope.cn/api/v1/")  # API基础URL
+        self.provider = self.config.get("provider", "ms")  # 提供商，默认为ModelScope
         
         # 智能绘画判断相关配置
-        self.paint_probability = config.get("paint_probability", 0.3)  # 绘画触发概率，默认30%
+        self.paint_probability = self.config.get("paint_probability", 0.3)  # 绘画触发概率，默认30%
         self.last_paint_time = 0  # 上次绘画时间
-        self.min_paint_interval = config.get("min_paint_interval", 300)  # 最小绘画间隔，默认5分钟
+        self.min_paint_interval = self.config.get("min_paint_interval", 300)  # 最小绘画间隔，默认5分钟
         
         # LLM智能判断配置
-        self.enable_llm_judge = config.get("enable_llm_judge", False)  # 是否启用LLM智能判断
+        self.enable_llm_judge = self.config.get("enable_llm_judge", False)  # 是否启用LLM智能判断
         
         # 判断是否绘画的大模型配置
-        self.judge_llm_api_url = config.get("judge_llm_api_url", "")  # 判断是否绘画的LLM API地址
-        self.judge_llm_api_key = config.get("judge_llm_api_key", "")  # 判断是否绘画的LLM API密钥
-        self.judge_llm_model = config.get("judge_llm_model", "gpt-3.5-turbo")  # 判断是否绘画的LLM模型名称
+        self.judge_llm_api_url = self.config.get("judge_llm_api_url", "")  # 判断是否绘画的LLM API地址
+        self.judge_llm_api_key = self.config.get("judge_llm_api_key", "")  # 判断是否绘画的LLM API密钥
+        self.judge_llm_model = self.config.get("judge_llm_model", "gpt-3.5-turbo")  # 判断是否绘画的LLM模型名称
         
         # 生成提示词的大模型配置
-        self.prompt_llm_api_url = config.get("prompt_llm_api_url", "")  # 生成提示词的LLM API地址
-        self.prompt_llm_api_key = config.get("prompt_llm_api_key", "")  # 生成提示词的LLM API密钥
-        self.prompt_llm_model = config.get("prompt_llm_model", "gpt-3.5-turbo")  # 生成提示词的LLM模型名称
+        self.prompt_llm_api_url = self.config.get("prompt_llm_api_url", "")  # 生成提示词的LLM API地址
+        self.prompt_llm_api_key = self.config.get("prompt_llm_api_key", "")  # 生成提示词的LLM API密钥
+        self.prompt_llm_model = self.config.get("prompt_llm_model", "gpt-3.5-turbo")  # 生成提示词的LLM模型名称
         
         # 对话历史缓存（用于基于上下文的提示词生成）
-        self.max_cache_size = config.get("max_cache_size", 10)  # 从配置读取最大缓存对话条数
+        self.max_cache_size = self.config.get("max_cache_size", 10)  # 从配置读取最大缓存对话条数
         
         # 创建数据存储目录
         self.data_dir = Path(__file__).parent / "data"
@@ -93,10 +91,10 @@ class ModFlux(Star):
         self.conversation_cache = self._load_conversation_cache()
         
         # 人物扮演形象配置
-        self.character_profile = config.get("default_character_profile", "")  # 从配置读取默认人物扮演形象描述
+        self.character_profile = self.config.get("default_character_profile", "")  # 从配置读取默认人物扮演形象描述
         
         # 创建临时目录用于存储下载的图片
-        temp_dir_name = config.get("temp_dir_name", "astrbot_images")  # 从配置读取临时目录名称
+        temp_dir_name = self.config.get("temp_dir_name", "astrbot_images")  # 从配置读取临时目录名称
         self.temp_dir = Path(tempfile.gettempdir()) / temp_dir_name
         self.temp_dir.mkdir(exist_ok=True)
 
@@ -412,7 +410,7 @@ class ModFlux(Star):
 
     async def _should_paint(self, message: str, conversation_history: list = None) -> bool:
         """
-        判断是否应该触发绘画功能，基于当前消息和对话历史
+        根据用户要求，仅使用AI大模型判断是否应该触发绘画功能
         
         Args:
             message: 用户当前消息内容
@@ -421,36 +419,20 @@ class ModFlux(Star):
         Returns:
             bool: 是否应该绘画
         """
-        self.logger.debug(f"[绘图判断] 开始判断是否需要绘图，消息内容: {message}")
+        self.logger.debug(f"[AI绘图判断] 开始使用AI大模型判断是否需要绘图，消息内容: {message}")
         
-        # 检查时间间隔
-        current_time = time.time()
-        time_diff = current_time - self.last_paint_time
-        if time_diff < self.min_paint_interval:
-            self.logger.debug(f"[绘图判断] 时间间隔不足，上次绘图时间: {self.last_paint_time}, 当前时间: {current_time}, 间隔: {time_diff:.2f}s")
+        # 检查是否配置了判断用的AI大模型
+        if not self.judge_llm_api_url or not self.judge_llm_api_key:
+            self.logger.warning("[AI绘图判断] 未配置判断用的AI大模型API地址或密钥，无法进行AI判断")
             return False
-        self.logger.debug("[绘图判断] 时间间隔满足条件")
         
-        # 检查概率触发
-        rand_val = random.random()
-        if rand_val > self.paint_probability:
-            self.logger.debug(f"[绘图判断] 概率未触发，随机值: {rand_val:.2f}, 触发概率: {self.paint_probability:.2f}")
-            return False
-        self.logger.debug("[绘图判断] 概率触发条件满足")
+        # 强制使用AI大模型判断是否绘画（基于完整对话上下文）
+        self.logger.info("[AI绘图判断] 将对话和历史记录发送给AI大模型进行判断...")
+        result, llm_response = await self._llm_judge_should_paint(message, conversation_history)
+        self.logger.debug(f"[AI绘图判断] LLM判断结果: {result}")
         
-        # 如果启用了LLM智能判断，优先使用LLM判断（基于完整对话上下文）
-        if self.enable_llm_judge and self.judge_llm_api_url and self.judge_llm_api_key:
-            self.logger.debug("[绘图判断] 使用LLM智能判断（基于对话历史）")
-            result, llm_response = await self._llm_judge_should_paint(message, conversation_history)
-            self.logger.debug(f"[绘图判断] LLM判断结果: {result}")
-            # 在终端显示最终判断结果
-            self.logger.info(f"[最终判断] 是否需要绘画: {'是' if result else '否'}")
-            return result
-        
-        # 否则使用传统的关键词匹配方法（仅基于当前消息）
-        self.logger.debug("[绘图判断] 使用关键词匹配方法（仅基于当前消息）")
-        result = await self._keyword_judge_should_paint(message)
-        self.logger.debug(f"[绘图判断] 关键词匹配结果: {result}")
+        # 在终端显示最终判断结果
+        self.logger.info(f"[最终判断] 是否需要绘画: {'是' if result else '否'}")
         return result
 
 
@@ -534,16 +516,14 @@ class ModFlux(Star):
                             self.logger.debug("[LLM绘图判断] LLM判断结果: 否")
                             return False, llm_response
                     else:
-                        # LLM请求失败，回退到关键词判断
-                        self.logger.warning(f"[LLM绘图判断] LLM请求失败，状态码：{response.status}，回退到关键词判断")
-                        fallback_result = await self._keyword_judge_should_paint(message)
-                        return fallback_result, "LLM请求失败，使用关键词判断"
+                        # LLM请求失败，直接抛出异常，不回退到其他判断方法
+                        self.logger.error(f"[LLM绘图判断] LLM请求失败，状态码：{response.status}")
+                        raise Exception(f"LLM请求失败，状态码：{response.status}")
                         
         except Exception as e:
-            # LLM判断异常，回退到关键词判断
-            self.logger.warning(f"[LLM绘图判断] LLM判断异常：{str(e)}，回退到关键词判断")
-            fallback_result = await self._keyword_judge_should_paint(message)
-            return fallback_result, f"LLM判断异常：{str(e)}，使用关键词判断"
+            # LLM判断异常，直接抛出异常，不回退到其他判断方法
+            self.logger.error(f"[LLM绘图判断] LLM判断异常：{str(e)}")
+            raise Exception(f"LLM判断异常：{str(e)}")
 
     async def _keyword_judge_should_paint(self, message: str) -> bool:
         """
@@ -595,7 +575,7 @@ class ModFlux(Star):
 
     async def _generate_paint_prompt(self, message: str, conversation_history: list = None) -> str:
         """
-        根据对话内容和对话历史生成绘画提示词
+        根据用户要求，仅使用AI大模型生成绘画指令
         
         Args:
             message: 用户当前消息内容
@@ -604,22 +584,17 @@ class ModFlux(Star):
         Returns:
             str: 生成的绘画提示词
         """
-        self.logger.debug(f"[提示词生成] 开始生成绘画提示词，消息内容: {message}")
+        self.logger.debug(f"[AI提示词生成] 开始使用AI大模型生成绘画指令，消息内容: {message}")
         
-        # 如果启用了LLM智能判断且有生成提示词的大模型配置，优先使用AI模型生成提示词
-        if self.enable_llm_judge and self.prompt_llm_api_url and self.prompt_llm_api_key:
-            self.logger.debug("[提示词生成] 使用LLM生成提示词")
-            try:
-                result = await self._llm_generate_paint_prompt(message, conversation_history)
-                self.logger.debug(f"[提示词生成] LLM生成提示词完成: {result}")
-                return result
-            except Exception as e:
-                self.logger.warning(f"[提示词生成] AI提示词生成失败，使用传统方法：{str(e)}")
+        # 检查是否配置了生成提示词的AI大模型
+        if not self.prompt_llm_api_url or not self.prompt_llm_api_key:
+            self.logger.error("[AI提示词生成] 未配置生成提示词的AI大模型API地址或密钥，无法生成绘画指令")
+            raise Exception("未配置生成提示词的AI大模型API地址或密钥")
         
-        # 使用传统方法生成提示词
-        self.logger.debug("[提示词生成] 使用传统方法生成提示词")
-        result = await self._traditional_generate_paint_prompt(message)
-        self.logger.debug(f"[提示词生成] 传统方法生成提示词完成: {result}")
+        # 强制使用AI大模型生成绘画指令（基于对话历史和人物形象）
+        self.logger.info("[AI提示词生成] 将对话和历史记录发送给AI大模型生成绘画指令...")
+        result = await self._llm_generate_paint_prompt(message, conversation_history)
+        self.logger.debug(f"[AI提示词生成] LLM生成绘画指令完成: {result}")
         return result
 
     async def _llm_generate_paint_prompt(self, message: str, conversation_history: list = None) -> str:
@@ -781,7 +756,7 @@ class ModFlux(Star):
         self.logger.info(f"[传统提示词生成] 传统方法生成提示词完成: {prompt}")
         return prompt
 
-    async def auto_paint_check(self, event):
+    async def auto_paint_check(self, event: AstrMessageEvent):
         """
         自动绘画检查 - 严格按照流程执行：
         1. AI根据对话和历史记录判断是否绘画
@@ -790,27 +765,17 @@ class ModFlux(Star):
         4. 不绘画时正常聊天
         
         Args:
-            event: AstrBot消息事件对象
-            
+            event: AstrMessageEvent对象，包含消息的完整信息
+        
         Yields:
             生成的图片或空结果
         """
         self.logger.info("[自动绘图] 开始自动绘图检查，严格按照流程执行")
         
-        # 获取消息内容，兼容不同版本的事件对象
-        message = None
+        # 获取消息内容
+        message = event.message_str
         
-        # 首先尝试直接获取message_str属性（标准AstrMessageEvent对象）
-        if hasattr(event, 'message_str'):
-            message = event.message_str
-        # 如果以上都失败，尝试获取ModFlux对象的message属性
-        elif hasattr(event, 'message'):
-            # ModFlux对象，直接获取message属性
-            message = event.message
-        # 如果直接获取失败，尝试通过message_obj获取（旧版本AstrMessageEvent对象）
-        elif hasattr(event, 'message_obj') and hasattr(event.message_obj, 'message_str'):
-            message = event.message_obj.message_str
-        else:
+        if not message:
             # 无法获取消息内容，记录错误并返回
             self.logger.error(f"[自动绘图] 无法获取消息内容，事件对象类型: {type(event)}")
             return
@@ -947,7 +912,7 @@ class ModFlux(Star):
         self.logger.info("[配置更新] 配置已成功更新")
     
     @filter.command("aiimg")
-    async def aiimg_command(self, event, *args, **kwargs):
+    async def aiimg_command(self, event: AstrMessageEvent, prompt: str):
         """
         处理/aiimg命令 - 手动触发图像生成，严格按照流程执行：
         1. 接收用户提供的提示词
@@ -955,70 +920,13 @@ class ModFlux(Star):
         3. 发送生成的图片
         
         Args:
-            event: AstrBot消息事件对象或插件实例
-            *args: 可变位置参数
-            **kwargs: 可变关键字参数
+            event: AstrMessageEvent对象，包含消息的完整信息
+            prompt: 绘画提示词
             
         Yields:
             生成的图片或错误信息
         """
-        self.logger.info("[命令处理] 接收到/aiimg命令，开始手动绘画流程")
-        
-        # 检查事件对象类型，兼容不同版本的AstrBot
-        actual_event = None
-        
-        # 首先检查event参数是否是有效的事件对象
-        if hasattr(event, 'message_str'):
-            # event参数是标准AstrMessageEvent对象
-            actual_event = event
-        elif hasattr(event, 'message_obj') and hasattr(event.message_obj, 'message_str'):
-            # event参数是旧版本AstrMessageEvent对象
-            actual_event = event
-        elif hasattr(event, 'message'):
-            # event参数是ModFlux对象
-            actual_event = event
-        else:
-            # event参数不是有效的事件对象，可能是插件实例
-            # 尝试从参数中获取事件对象
-            if args and hasattr(args[0], 'message_str'):
-                actual_event = args[0]
-            elif args and hasattr(args[0], 'message_obj') and hasattr(args[0].message_obj, 'message_str'):
-                actual_event = args[0]
-            elif args and hasattr(args[0], 'message'):
-                actual_event = args[0]
-            else:
-                # 无法确定事件对象，记录错误并返回
-                self.logger.error(f"[命令处理] 无法确定事件对象类型: {type(event)}, 参数: {args}")
-                yield event.plain_result("无法处理命令，请检查插件配置。")
-                return
-        
-        # 提取命令参数（提示词），使用正确的事件对象
-        message = None
-        
-        # 首先尝试直接获取message_str属性（标准AstrMessageEvent对象）
-        if hasattr(actual_event, 'message_str'):
-            message = actual_event.message_str
-        # 如果以上都失败，尝试获取ModFlux对象的message属性
-        elif hasattr(actual_event, 'message'):
-            message = actual_event.message
-        # 如果直接获取失败，尝试通过message_obj获取（旧版本AstrMessageEvent对象）
-        elif hasattr(actual_event, 'message_obj') and hasattr(actual_event.message_obj, 'message_str'):
-            message = actual_event.message_obj.message_str
-        else:
-            # 无法获取消息内容，记录错误并返回
-            self.logger.error(f"[命令处理] 无法获取消息内容，事件对象类型: {type(actual_event)}")
-            yield event.plain_result("无法处理命令，请检查插件配置。")
-            return
-            
-        parts = message.strip().split(maxsplit=1)
-        
-        if len(parts) < 2:
-            # 没有提供提示词
-            yield event.plain_result("请提供绘画提示词！\n使用格式：/aiimg <提示词>\n例如：/aiimg 一只可爱的猫咪在花园里玩耍")
-            return
-        
-        prompt = parts[1].strip()
-        self.logger.info(f"[命令处理] 步骤1: 接收用户提供的提示词: {prompt}")
+        self.logger.info(f"[命令处理] 接收到/aiimg命令，提示词: {prompt}")
         
         try:
             # 步骤2: 将提示词传递给绘画大模型生成图片
@@ -1054,51 +962,22 @@ class ModFlux(Star):
                         Image.fromURL(image_url)
                     ]
             
-            yield actual_event.chain_result(chain)
+            yield event.chain_result(chain)
             self.logger.info("[命令处理] 图片发送完成")
             
         except Exception as e:
             error_msg = f"生成图片失败: {str(e)}"
             self.logger.error(f"[命令处理] {error_msg}")
-            yield actual_event.plain_result(error_msg)
+            yield event.plain_result(error_msg)
 
     @filter.event_message_type(filter.EventMessageType.ALL)
-    async def on_message(self, event, *args, **kwargs):
+    async def on_message(self, event: AstrMessageEvent):
         """
         消息事件处理器 - 处理所有接收到的消息
         
         Args:
-            event: AstrBot消息事件对象或插件实例
-            *args: 可变位置参数
-            **kwargs: 可变关键字参数
+            event: AstrMessageEvent对象，包含消息的完整信息
         """
-        # 检查事件对象类型，兼容不同版本的AstrBot
-        actual_event = None
-        
-        # 首先检查event参数是否是有效的事件对象
-        if hasattr(event, 'message_str'):
-            # event参数是标准AstrMessageEvent对象
-            actual_event = event
-        elif hasattr(event, 'message_obj') and hasattr(event.message_obj, 'message_str'):
-            # event参数是旧版本AstrMessageEvent对象
-            actual_event = event
-        elif hasattr(event, 'message'):
-            # event参数是ModFlux对象
-            actual_event = event
-        else:
-            # event参数不是有效的事件对象，可能是插件实例
-            # 尝试从参数中获取事件对象
-            if args and hasattr(args[0], 'message_str'):
-                actual_event = args[0]
-            elif args and hasattr(args[0], 'message_obj') and hasattr(args[0].message_obj, 'message_str'):
-                actual_event = args[0]
-            elif args and hasattr(args[0], 'message'):
-                actual_event = args[0]
-            else:
-                # 无法确定事件对象，记录错误并返回
-                self.logger.error(f"无法确定事件对象类型: {type(event)}, 参数: {args}")
-                return
-        
-        # 调用自动绘画检查功能，传递正确的事件对象
-        async for result in self.auto_paint_check(actual_event):
+        # 调用自动绘画检查功能
+        async for result in self.auto_paint_check(event):
             yield result
