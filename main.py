@@ -392,25 +392,36 @@ class ModFlux(Star):
             # 方法1：下载图片到本地
             try:
                 local_image_path = await self._download_image(image_url)
-                chain = [Image.fromFileSystem(local_image_path)]
+                # 直接使用event.send发送图片，避免使用chain_result
+                await event.send([Image.fromFileSystem(local_image_path)])
+                self.logger.info("[工具调用] 图片发送完成")
+                return
+                
             except Exception:
                 # 方法1失败，尝试方法2：使用base64编码
                 try:
                     image_base64 = await self._image_to_base64(image_url)
-                    chain = [Image.fromURL(f"data:image/png;base64,{image_base64}")]
+                    # 直接使用event.send发送图片，避免使用chain_result
+                    await event.send([Image.fromURL(f"data:image/png;base64,{image_base64}")])
+                    self.logger.info("[工具调用] 图片发送完成")
+                    return
+                    
                 except Exception:
                     # 所有方法都失败，返回原始URL（可能会被平台拦截）
-                    chain = [Image.fromURL(image_url)]
-            
-            yield event.chain_result(chain)
+                    # 直接使用event.send发送URL，避免使用chain_result
+                    await event.send([Image.fromURL(image_url)])
+                    self.logger.info("[工具调用] 图片发送完成")
+                    return
 
         except Exception as e:
             # 异常处理，返回错误信息
-            yield event.plain_result(f"生成图片时遇到问题: {str(e)}")
+            # 直接使用event.send发送错误信息，而不是plain_result
+            await event.send([Plain(f"生成图片时遇到问题: {str(e)}")])
+            return
 
     async def _should_paint(self, message: str, conversation_history: list = None) -> bool:
         """
-        根据用户要求，仅使用AI大模型判断是否应该触发绘画功能
+        根据用户要求，仅使用AI大模型判断是否应该触发绘画功能，并在判断后应用概率控制
         
         Args:
             message: 用户当前消息内容
@@ -420,6 +431,7 @@ class ModFlux(Star):
             bool: 是否应该绘画
         """
         self.logger.debug(f"[AI绘图判断] 开始使用AI大模型判断是否需要绘图，消息内容: {message}")
+        self.logger.info(f"[绘图概率] 当前绘图触发概率: {self.paint_probability}")
         
         # 检查是否配置了判断用的AI大模型
         if not self.judge_llm_api_url or not self.judge_llm_api_key:
@@ -431,9 +443,19 @@ class ModFlux(Star):
         result, llm_response = await self._llm_judge_should_paint(message, conversation_history)
         self.logger.debug(f"[AI绘图判断] LLM判断结果: {result}")
         
+        # 在LLM判断结果基础上应用概率控制
+        if result:
+            import random
+            random_number = random.random()
+            self.logger.info(f"[概率控制] 生成随机数: {random_number}, 阈值: {self.paint_probability}")
+            should_paint = random_number < self.paint_probability
+        else:
+            should_paint = False
+            self.logger.info(f"[概率控制] LLM判断为否，不进行概率检查")
+        
         # 在终端显示最终判断结果
-        self.logger.info(f"[最终判断] 是否需要绘画: {'是' if result else '否'}")
-        return result
+        self.logger.info(f"[最终判断] 是否需要绘画: {'是' if should_paint else '否'}")
+        return should_paint
 
 
 
@@ -817,13 +839,11 @@ class ModFlux(Star):
                 # 尝试多种方式发送图片（只发送图片，不添加文字描述）
                 self.logger.info("[自动绘图] 开始发送图片...")
                 try:
-                    # 方法1：下载图片到本地
-                    self.logger.info("[自动绘图] 尝试下载图片到本地...")
-                    local_image_path = await self._download_image(image_url)
-                    self.logger.info(f"[自动绘图] 图片下载完成，本地路径: {local_image_path}")
-                    chain = [
-                        Image.fromFileSystem(local_image_path)
-                    ]
+                    # 直接使用event.send发送图片，避免使用chain_result
+                    await event.send([Image.fromFileSystem(local_image_path)])
+                    self.logger.info("[自动绘图] 图片发送完成")
+                    return
+                    
                 except Exception as download_error:
                     self.logger.error(f"[自动绘图] 下载图片失败: {str(download_error)}")
                     # 方法1失败，尝试方法2：使用base64编码
@@ -831,24 +851,21 @@ class ModFlux(Star):
                         self.logger.info("[自动绘图] 尝试使用base64编码发送图片...")
                         image_base64 = await self._image_to_base64(image_url)
                         self.logger.info("[自动绘图] 图片base64编码完成")
-                        chain = [
-                            Image.fromURL(f"data:image/png;base64,{image_base64}")
-                        ]
+                        
+                        # 直接使用event.send发送图片，避免使用chain_result
+                        await event.send([Image.fromURL(f"data:image/png;base64,{image_base64}")])
+                        self.logger.info("[自动绘图] 图片发送完成")
+                        return
+                        
                     except Exception as base64_error:
                         self.logger.error(f"[自动绘图] base64编码失败: {str(base64_error)}")
                         # 所有方法都失败，返回原始URL（可能会被平台拦截）
                         self.logger.warning("[自动绘图] 所有方法都失败，返回原始URL")
-                        chain = [
-                            Image.fromURL(image_url)
-                        ]
-                
-                # 将绘画结果添加到对话历史缓存
-                bot_response = f"根据我们的对话，我为你创作了一幅画：{paint_prompt}"
-                self._update_conversation_cache(bot_response, "机器人")
-                self.logger.info("[自动绘图] 已将绘画结果添加到对话历史缓存")
-                
-                yield event.chain_result(chain)
-                self.logger.info("[自动绘图] 图片发送完成")
+                        
+                        # 直接使用event.send发送URL，避免使用chain_result
+                        await event.send([Image.fromURL(image_url)])
+                        self.logger.info("[自动绘图] 图片发送完成")
+                        return
                 
             except Exception as e:
                 # 绘画失败时静默处理，不干扰正常对话
@@ -941,9 +958,12 @@ class ModFlux(Star):
                 self.logger.info("[命令处理] 尝试下载图片到本地...")
                 local_image_path = await self._download_image(image_url)
                 self.logger.info(f"[命令处理] 图片下载完成，本地路径: {local_image_path}")
-                chain = [
-                    Image.fromFileSystem(local_image_path)
-                ]
+                
+                # 直接使用event.send发送图片，避免使用chain_result
+                await event.send([Image.fromFileSystem(local_image_path)])
+                self.logger.info("[命令处理] 图片发送完成")
+                return
+                
             except Exception as download_error:
                 self.logger.error(f"[命令处理] 下载图片失败: {str(download_error)}")
                 # 方法1失败，尝试方法2：使用base64编码
@@ -951,24 +971,29 @@ class ModFlux(Star):
                     self.logger.info("[命令处理] 尝试使用base64编码发送图片...")
                     image_base64 = await self._image_to_base64(image_url)
                     self.logger.info("[命令处理] 图片base64编码完成")
-                    chain = [
-                        Image.fromURL(f"data:image/png;base64,{image_base64}")
-                    ]
+                    
+                    # 直接使用event.send发送图片，避免使用chain_result
+                    await event.send([Image.fromURL(f"data:image/png;base64,{image_base64}")])
+                    self.logger.info("[命令处理] 图片发送完成")
+                    return
+                    
                 except Exception as base64_error:
                     self.logger.error(f"[命令处理] base64编码失败: {str(base64_error)}")
                     # 所有方法都失败，返回原始URL（可能会被平台拦截）
                     self.logger.warning("[命令处理] 所有方法都失败，返回原始URL")
-                    chain = [
-                        Image.fromURL(image_url)
-                    ]
-            
-            yield event.chain_result(chain)
-            self.logger.info("[命令处理] 图片发送完成")
+                    
+                    # 直接使用event.send发送URL，避免使用chain_result
+                    await event.send([Image.fromURL(image_url)])
+                    self.logger.info("[命令处理] 图片发送完成")
+                    return
             
         except Exception as e:
             error_msg = f"生成图片失败: {str(e)}"
             self.logger.error(f"[命令处理] {error_msg}")
-            yield event.plain_result(error_msg)
+            
+            # 发送错误信息，直接使用event.send而不是plain_result
+            await event.send([Plain(error_msg)])
+            return
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
