@@ -42,47 +42,46 @@ class ModFlux(Star):
     继承自AstrBot的Star基类，提供图像生成功能
     """
     
-    def __init__(self, context: Context, config: AstrBotConfig):
+    def __init__(self, context: Context):
         """
         初始化插件
         
         Args:
             context: AstrBot上下文对象
-            config: 插件配置对象
         """
         super().__init__(context)
         
         # 使用AstrBot提供的logger接口
         self.logger = logger
         
-        # 使用传入的配置对象
-        self.config = config
-        self.api_key = self.config.get("api_key")  # API密钥
-        self.model = self.config.get("model")      # 模型名称
-        self.size = self.config.get("size", "768x512")  # 默认图片尺寸
-        self.api_url = self.config.get("api_url", "https://modelscope.cn/api/v1/")  # API基础URL
-        self.provider = self.config.get("provider", "ms")  # 提供商，默认为ModelScope
+        # 初始化配置变量（这些将通过on_config_update方法设置）
+        self.config = {}
+        self.api_key = ""
+        self.model = ""
+        self.size = "768x512"
+        self.api_url = "https://modelscope.cn/api/v1/"
+        self.provider = "ms"
         
         # 智能绘画判断相关配置
-        self.paint_probability = self.config.get("paint_probability", 0.3)  # 绘画触发概率，默认30%
-        self.last_paint_time = 0  # 上次绘画时间
-        self.min_paint_interval = self.config.get("min_paint_interval", 300)  # 最小绘画间隔，默认5分钟
+        self.paint_probability = 0.3
+        self.last_paint_time = 0
+        self.min_paint_interval = 300
         
         # LLM智能判断配置
-        self.enable_llm_judge = self.config.get("enable_llm_judge", False)  # 是否启用LLM智能判断
+        self.enable_llm_judge = False
         
         # 判断是否绘画的大模型配置
-        self.judge_llm_api_url = self.config.get("judge_llm_api_url", "")  # 判断是否绘画的LLM API地址
-        self.judge_llm_api_key = self.config.get("judge_llm_api_key", "")  # 判断是否绘画的LLM API密钥
-        self.judge_llm_model = self.config.get("judge_llm_model", "gpt-3.5-turbo")  # 判断是否绘画的LLM模型名称
+        self.judge_llm_api_url = ""
+        self.judge_llm_api_key = ""
+        self.judge_llm_model = "gpt-3.5-turbo"
         
         # 生成提示词的大模型配置
-        self.prompt_llm_api_url = self.config.get("prompt_llm_api_url", "")  # 生成提示词的LLM API地址
-        self.prompt_llm_api_key = self.config.get("prompt_llm_api_key", "")  # 生成提示词的LLM API密钥
-        self.prompt_llm_model = self.config.get("prompt_llm_model", "gpt-3.5-turbo")  # 生成提示词的LLM模型名称
+        self.prompt_llm_api_url = ""
+        self.prompt_llm_api_key = ""
+        self.prompt_llm_model = "gpt-3.5-turbo"
         
         # 对话历史缓存（用于基于上下文的提示词生成）
-        self.max_cache_size = self.config.get("max_cache_size", 10)  # 从配置读取最大缓存对话条数
+        self.max_cache_size = 10
         
         # 创建数据存储目录
         self.data_dir = Path(__file__).parent / "data"
@@ -92,16 +91,15 @@ class ModFlux(Star):
         self.conversation_cache = self._load_conversation_cache()
         
         # 人物扮演形象配置
-        self.character_profile = self.config.get("default_character_profile", "")  # 从配置读取默认人物扮演形象描述
+        self.character_profile = ""
         
         # 创建临时目录用于存储下载的图片
-        temp_dir_name = self.config.get("temp_dir_name", "astrbot_images")  # 从配置读取临时目录名称
-        self.temp_dir = Path(tempfile.gettempdir()) / temp_dir_name
+        self.temp_dir_name = "astrbot_images"
+        self.temp_dir = Path(tempfile.gettempdir()) / self.temp_dir_name
         self.temp_dir.mkdir(exist_ok=True)
 
-        # 验证必要配置
-        if not self.api_key:
-            self.logger.warning("API密钥未配置，部分功能将受限。请前往插件配置页面设置API密钥。")
+        # 验证必要配置将在on_config_update中进行
+        self.logger.info("[初始化] 魔搭社区文生图插件初始化完成")
 
     def _load_conversation_cache(self) -> list:
         """
@@ -851,6 +849,11 @@ class ModFlux(Star):
                 # 尝试多种方式发送图片（只发送图片，不添加文字描述）
                 self.logger.info("[自动绘图] 开始发送图片...")
                 try:
+                    # 方法1：下载图片到本地
+                    self.logger.info("[自动绘图] 尝试下载图片到本地...")
+                    local_image_path = await self._download_image(image_url)
+                    self.logger.info(f"[自动绘图] 图片下载完成，本地路径: {local_image_path}")
+                    
                     # 直接使用event.send发送图片，避免使用chain_result
                     await event.send([Image.fromFileSystem(local_image_path)])
                     self.logger.info("[自动绘图] 图片发送完成")
@@ -900,43 +903,62 @@ class ModFlux(Star):
         """
         self.logger.info("[配置更新] 接收到新的配置")
         
+        # 临时转换为字典以便使用get方法
+        if hasattr(new_config, 'get'):
+            config_dict = new_config
+        else:
+            # 如果new_config不是字典类型，将其转换为字典
+            config_dict = {}
+            if hasattr(new_config, '__dict__'):
+                config_dict = vars(new_config)
+            else:
+                config_dict = str(new_config)
+        
         # 更新配置字典
-        self.config = new_config
+        self.config = config_dict if isinstance(config_dict, dict) else {}
         
         # 更新API相关参数
-        self.api_key = new_config.get("api_key", self.api_key)
-        self.model = new_config.get("model", self.model)
-        self.size = new_config.get("size", self.size)
-        self.api_url = new_config.get("api_url", self.api_url)
-        self.provider = new_config.get("provider", self.provider)
+        self.api_key = self.config.get("api_key", self.api_key)
+        self.model = self.config.get("model", self.model)
+        self.size = self.config.get("size", self.size)
+        self.api_url = self.config.get("api_url", self.api_url)
+        self.provider = self.config.get("provider", self.provider)
         
         # 更新智能绘画判断相关配置
-        self.paint_probability = new_config.get("paint_probability", self.paint_probability)
-        self.min_paint_interval = new_config.get("min_paint_interval", self.min_paint_interval)
+        self.paint_probability = self.config.get("paint_probability", self.paint_probability)
+        self.min_paint_interval = self.config.get("min_paint_interval", self.min_paint_interval)
         
         # 更新LLM智能判断配置
-        self.enable_llm_judge = new_config.get("enable_llm_judge", self.enable_llm_judge)
+        self.enable_llm_judge = self.config.get("enable_llm_judge", self.enable_llm_judge)
         
         # 更新判断是否绘画的大模型配置
-        self.judge_llm_api_url = new_config.get("judge_llm_api_url", self.judge_llm_api_url)
-        self.judge_llm_api_key = new_config.get("judge_llm_api_key", self.judge_llm_api_key)
-        self.judge_llm_model = new_config.get("judge_llm_model", self.judge_llm_model)
+        self.judge_llm_api_url = self.config.get("judge_llm_api_url", self.judge_llm_api_url)
+        self.judge_llm_api_key = self.config.get("judge_llm_api_key", self.judge_llm_api_key)
+        self.judge_llm_model = self.config.get("judge_llm_model", self.judge_llm_model)
         
         # 更新生成提示词的大模型配置
-        self.prompt_llm_api_url = new_config.get("prompt_llm_api_url", self.prompt_llm_api_url)
-        self.prompt_llm_api_key = new_config.get("prompt_llm_api_key", self.prompt_llm_api_key)
-        self.prompt_llm_model = new_config.get("prompt_llm_model", self.prompt_llm_model)
+        self.prompt_llm_api_url = self.config.get("prompt_llm_api_url", self.prompt_llm_api_url)
+        self.prompt_llm_api_key = self.config.get("prompt_llm_api_key", self.prompt_llm_api_key)
+        self.prompt_llm_model = self.config.get("prompt_llm_model", self.prompt_llm_model)
         
         # 更新对话历史缓存配置
-        self.max_cache_size = new_config.get("max_cache_size", self.max_cache_size)
+        self.max_cache_size = self.config.get("max_cache_size", self.max_cache_size)
         
         # 更新人物扮演形象配置
-        self.character_profile = new_config.get("default_character_profile", self.character_profile)
+        self.character_profile = self.config.get("default_character_profile", self.character_profile)
         
         # 更新临时目录配置
-        temp_dir_name = new_config.get("temp_dir_name", "astrbot_images")
-        self.temp_dir = Path(tempfile.gettempdir()) / temp_dir_name
-        self.temp_dir.mkdir(exist_ok=True)
+        temp_dir_name = self.config.get("temp_dir_name", self.temp_dir_name)
+        if temp_dir_name != self.temp_dir_name:
+            self.temp_dir_name = temp_dir_name
+            self.temp_dir = Path(tempfile.gettempdir()) / self.temp_dir_name
+            self.temp_dir.mkdir(exist_ok=True)
+        
+        # 验证必要配置
+        if not self.api_key:
+            self.logger.warning("API密钥未配置，部分功能将受限。请前往插件配置页面设置API密钥。")
+        else:
+            self.logger.info("API密钥已配置，插件功能正常")
         
         self.logger.info("[配置更新] 配置已成功更新")
     
@@ -1005,7 +1027,6 @@ class ModFlux(Star):
             self.logger.error(f"[命令处理] {error_msg}")
             return
 
-    @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
         """
         消息事件处理器 - 处理所有接收到的消息
