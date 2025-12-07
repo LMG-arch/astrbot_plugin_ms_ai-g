@@ -1,18 +1,6 @@
 [
   {
     "user_id": "astrbot",
-    "user_message": "能让我看看具体环境吗",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765119324_e53bc8d0.jpg",
-    "timestamp": 1765119325.7307317
-  },
-  {
-    "user_id": "astrbot",
-    "user_message": "aiimg 一只猫",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765119745_98a94525.jpg",
-    "timestamp": 1765119746.5224285
-  },
-  {
-    "user_id": "astrbot",
     "user_message": "/aiimg 一只猫",
     "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765119779_ebdf80d5.jpg",
     "timestamp": 1765119780.5587401
@@ -58,5 +46,17 @@
     "user_message": "刚给我看看你的图片",
     "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765124248_b749c3b7.jpg",
     "timestamp": 1765124249.0219529
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "发我一张图",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765125515_37057731.jpg",
+    "timestamp": 1765125516.0006769
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "给我一张照片",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765125800_3027fc42.jpg",
+    "timestamp": 1765125801.4638565
   }
 ]

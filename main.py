@@ -98,6 +98,8 @@ class ModFlux(Star):
         # 初始化对话缓存（从文件加载）
         self.conversation_cache = self._load_conversation_cache()
         
+
+        
         # 临时目录
         self.temp_dir_name = "astrbot_images"
         self.temp_dir = Path(tempfile.gettempdir()) / self.temp_dir_name
@@ -242,6 +244,25 @@ class ModFlux(Star):
         self.max_cache_size = int(self.config.get("max_cache_size", 10))
         
         self.logger.info(f"[配置更新] 配置更新完成，当前配置项数: {len(self.config)}")
+
+    async def initialize(self):
+        # 解决参数不匹配问题：将注册表中的未绑定函数更新为绑定方法
+        from astrbot.core.star.star_handler import star_handlers_registry
+        
+        # 获取当前模块名和方法名
+        module_name = self.__class__.__module__
+        method_name = "on_message"
+        handler_full_name = f"{module_name}_{method_name}"
+        
+        # 查找注册表中的处理函数
+        handler_metadata = star_handlers_registry.get_handler_by_full_name(handler_full_name)
+        if handler_metadata:
+            # 更新为绑定到当前实例的方法
+            handler_metadata.handler = self.on_message
+            self.logger.info(f"[ms_ai_g] 已将on_message方法更新为绑定版本")
+        
+        self.logger.info(f"[初始化] ModFlux插件初始化完成")
+
 
     async def generate_image(self, prompt: str, user_id: Optional[str] = None) -> Optional[str]:
         """
