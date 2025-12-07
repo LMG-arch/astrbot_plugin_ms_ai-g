@@ -805,7 +805,7 @@ Return only the prompt, no additional explanation.
 
     
     @filter.event_message_type(filter.EventMessageType.ALL)
-    async def on_message(self, event: AstrMessageEvent) -> AsyncGenerator:
+    async def on_message(self, event: AstrMessageEvent, *args, **kwargs) -> AsyncGenerator:
         """
         处理消息事件，用于智能绘画判断和对话
         
