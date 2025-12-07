@@ -1,0 +1,74 @@
+{
+    "api_url": {
+        "description": "绘画大模型API地址",
+        "type": "string",
+        "default": "https://modelscope.cn/api/v1/",
+        "hint": "文生图服务器地址"
+    },
+    "api_key": {
+        "description": "绘画大模型API密钥",
+        "type": "string",
+        "default": "",
+        "hint": "绘画大模型的访问密钥"
+    },
+    "model": {
+        "description": "绘画大模型名称",
+        "type": "string",
+        "default": "AI-ModelScope/stable-diffusion-xl-base-1.0",
+        "hint": "使用的绘画AI模型"
+    },
+    "size": {
+        "description": "生成图片分辨率",
+        "type": "string",
+        "default": "1080x1920",
+        "hint": "生成图片的尺寸"
+    },
+    "paint_probability": {
+        "description": "智能绘画触发概率",
+        "type": "float",
+        "default": 0.3,
+        "hint": "聊天过程中触发绘画的概率，0-1之间的小数，默认0.3（30%）"
+    },
+    "judge_llm_api_url": {
+        "description": "判断是否绘画的大模型API地址",
+        "type": "string",
+        "default": "https://api.openai.com/v1/chat/completions",
+        "hint": "用于智能判断是否应该绘画的大模型API地址（OpenAI格式），例如：https://api.openai.com/v1/chat/completions"
+    },
+    "judge_llm_api_key": {
+        "description": "判断是否绘画的大模型API密钥",
+        "type": "string",
+        "default": "",
+        "hint": "判断是否绘画的大模型的访问密钥"
+    },
+    "judge_llm_model": {
+        "description": "判断是否绘画的大模型名称",
+        "type": "string",
+        "default": "gpt-3.5-turbo",
+        "hint": "用于智能判断是否应该绘画的大模型名称"
+    },
+    "judge_mode": {
+        "description": "绘画判断模式",
+        "type": "string",
+        "default": "random",
+        "hint": "选择绘画判断模式：'random'（随机判断）或 'llm'（大模型智能判断），只能选择一个"
+    },
+    "max_cache_size": {
+        "description": "对话历史缓存最大条数",
+        "type": "int",
+        "default": 10,
+        "hint": "智能绘画功能保存的对话历史记录最大数量，用于基于上下文生成提示词"
+    },
+    "min_paint_interval": {
+        "description": "最小绘画间隔时间",
+        "type": "int",
+        "default": 300,
+        "hint": "两次自动绘画之间的最小间隔时间（秒），默认为300秒（5分钟）"
+    },
+    "provider": {
+        "description": "API提供商",
+        "type": "string",
+        "default": "ms",
+        "hint": "图像生成API的提供商，可选值：'ms'（ModelScope）或'openai'/'oa'（OpenAI）"
+    }
+}

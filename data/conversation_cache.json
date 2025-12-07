@@ -1,0 +1,62 @@
+[
+  {
+    "user_id": "astrbot",
+    "user_message": "能让我看看具体环境吗",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765119216_7c6a32b9.jpg",
+    "timestamp": 1765119217.2636316
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "能让我看看具体环境吗",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765119324_e53bc8d0.jpg",
+    "timestamp": 1765119325.7307317
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "aiimg 一只猫",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765119745_98a94525.jpg",
+    "timestamp": 1765119746.5224285
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "/aiimg 一只猫",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765119779_ebdf80d5.jpg",
+    "timestamp": 1765119780.5587401
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "你好",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765120476_fdc591f1.jpg",
+    "timestamp": 1765120477.5325289
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "给我看看你的照片",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765121769_1744ed5c.jpg",
+    "timestamp": 1765121770.3934507
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "能让我看看具体环境吗",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765121892_87c45859.jpg",
+    "timestamp": 1765121893.7779493
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "给我看看",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765122574_700d865b.jpg",
+    "timestamp": 1765122575.4034934
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "画一只小猫",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765123183_673c81f8.jpg",
+    "timestamp": 1765123184.2680717
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "你在干嘛给我看看",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765123269_92184f63.jpg",
+    "timestamp": 1765123269.9703133
+  }
+]

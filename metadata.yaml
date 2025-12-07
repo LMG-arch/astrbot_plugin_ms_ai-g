@@ -1,0 +1,6 @@
+name: ms_ai-g
+desc: AI绘画插件
+help: 基于魔搭社区的AI绘画生成插件
+version: "2.0"
+author: LMG-arch
+repo: https://github.com/LMG-arch/astrbot_plugin_ms_ai-g.git
