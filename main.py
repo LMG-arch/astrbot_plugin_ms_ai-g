@@ -7,6 +7,7 @@ import asyncio
 import aiohttp
 import base64
 import json
+import random
 import time
 import tempfile
 import hashlib
@@ -90,6 +91,20 @@ class ModFlux(Star):
         
         # 对话历史缓存（用于基于上下文的提示词生成）
         self.max_cache_size = 10
+        
+        # 活动状态管理
+        self.current_activity = "none"
+        self.activity_history = []
+        self.activity_images = {
+            "none": "A person sitting at a desk, working on a computer, modern office, soft lighting",
+            "experiment": "A scientist working in a laboratory, surrounded by test tubes and equipment, bright overhead lighting",
+            "shopping": "A busy street scene with shops and people walking around, vibrant colors, daytime",
+            "cooking": "A kitchen scene with someone cooking, warm lighting, homely atmosphere",
+            "reading": "A person reading a book in a cozy corner, soft lighting, comfortable chair",
+            "writing": "A person writing at a desk, papers scattered around, natural lighting from a window",
+            "hiking": "A scenic mountain trail with a hiker, beautiful landscape, sunny day",
+            "painting": "An artist painting on a canvas, colorful art supplies, studio lighting"
+        }
         
         # 创建数据存储目录
         self.data_dir = Path(__file__).parent / "data"
@@ -609,7 +624,7 @@ class ModFlux(Star):
             请认真思考这句对话用户是否希望进行绘画
         """
         # 定义绘画关键词
-        paint_keywords = ["看看照片", "看看", "发张照片", "发张图", "生成图片", "画一张", "画个", "想看照片", "想看"]
+        paint_keywords = ["看看照片", "看看", "发张照片","拍张照片", "发张图", "生成图片", "画一张", "画个", "想看照片", "想看"]
         
         # 检查是否包含绘画关键词
         detected_keywords = []
@@ -624,49 +639,78 @@ class ModFlux(Star):
         
         # 检查是否在最小间隔时间内
         current_time = time.time()
+        
+        # 检查是否是活动询问
+        activity_query_phrases = ["在干嘛", "在做什么", "你在干什么", "你在做什么", "你在忙什么", "在忙什么"]
+        if any(phrase in message for phrase in activity_query_phrases):
+            # 如果是活动询问，不受最小间隔时间限制，直接判断为需要绘画
+            self.logger.info(f"[智能判断] 检测到活动询问: {message}，不受间隔限制，直接判断为需要绘画")
+            return True
+        
+        # 非活动询问，检查最小间隔时间
         if current_time - self.last_paint_time < self.min_paint_interval:
             self.logger.info("[智能判断] 在最小间隔时间内，跳过绘画")
             return False
         
-        # 使用系统自带的LLM进行智能判断
-        try:
-            # 获取会话ID
-            session_id = event.session_id
-            
-            # 获取系统消息历史
-            self.logger.info(f"[智能判断] 获取会话 {session_id} 的消息历史")
-            
-            # 使用正确的API方法获取消息历史
-            # 从event中获取platform_id和user_id
-            platform_id = event.platform_meta.id
-            user_id = event.unified_msg_origin
-            
+        # 检查判断模式配置
+        judge_mode = self.config.get("judge_mode", "random")
+        
+        # 随机模式
+        if judge_mode == "random":
+            paint_probability = self.config.get("paint_probability", 0.3)
+            if random.random() < paint_probability:
+                self.logger.info(f"[随机判断] 随机触发绘画，概率: {paint_probability}")
+                return True
+            else:
+                self.logger.info(f"[随机判断] 未触发绘画，概率: {paint_probability}")
+                return False
+        
+        # LLM判断模式 - 使用专门的大模型进行判断
+        elif judge_mode == "llm":
             try:
-                system_messages = await self.context.message_history_manager.get(
-                    platform_id=platform_id,
-                    user_id=user_id,
-                    page=1,
-                    page_size=5
-                )
+                # 获取专门的判断大模型配置
+                judge_llm_api_url = self.config.get("judge_llm_api_url", "")
+                judge_llm_api_key = self.config.get("judge_llm_api_key", "")
+                judge_llm_model = self.config.get("judge_llm_model", "gpt-3.5-turbo")
                 
-                conversation_text = ""
-                if system_messages:
-                    for msg in system_messages:
-                        # 解析消息内容
-                        if msg.content and isinstance(msg.content, dict):
-                            content = msg.content.get('message_str', '')
-                            sender_name = msg.sender_name or ''
-                            role = "user" if sender_name != "AstrBot" else "assistant"
-                            conversation_text += f"{role}: {content}\n"
-                    self.logger.info(f"[智能判断] 已获取 {len(system_messages)} 条系统消息历史")
-                else:
-                    self.logger.info("[智能判断] 未获取到系统消息历史")
-            except Exception as e:
-                self.logger.error(f"[智能判断] 获取消息历史时发生错误: {str(e)}")
-                conversation_text = ""
-            
-            # 构建判断请求
-            judge_prompt = f"""
+                # 检查必要的配置是否存在
+                if not judge_llm_api_url:
+                    self.logger.error("[智能判断] 未配置专门的判断大模型API地址")
+                    return False
+                
+                self.logger.info(f"[智能判断] 使用专门的大模型进行判断，模型: {judge_llm_model}")
+                
+                # 获取系统消息历史
+                try:
+                    # 从event中获取platform_id和user_id
+                    platform_id = event.platform_meta.id
+                    user_id = event.unified_msg_origin
+                    
+                    system_messages = await self.context.message_history_manager.get(
+                        platform_id=platform_id,
+                        user_id=user_id,
+                        page=1,
+                        page_size=5
+                    )
+                    
+                    conversation_text = ""
+                    if system_messages:
+                        for msg in system_messages:
+                            # 解析消息内容
+                            if msg.content and isinstance(msg.content, dict):
+                                content = msg.content.get('message_str', '')
+                                sender_name = msg.sender_name or ''
+                                role = "user" if sender_name != "AstrBot" else "assistant"
+                                conversation_text += f"{role}: {content}\n"
+                        self.logger.info(f"[智能判断] 已获取 {len(system_messages)} 条系统消息历史")
+                    else:
+                        self.logger.info("[智能判断] 未获取到系统消息历史")
+                except Exception as e:
+                    self.logger.error(f"[智能判断] 获取消息历史时发生错误: {str(e)}")
+                    conversation_text = ""
+                
+                # 构建判断请求
+                judge_prompt = f"""
 你现在需要扮演一个绘画请求判断专家，请仔细分析用户的最新对话，判断用户是否希望进行绘画生成。
 
 用户最新消息：{message}
@@ -675,47 +719,72 @@ class ModFlux(Star):
 {conversation_text}
 
 请你只需要输出 "yes" 或 "no"，表示是否需要进行绘画生成，不要输出其他任何内容。
-如果用户的消息中有绘画相关的请求，比如"画一张"、"生成图片"、"发张图"等，或者从上下文可以判断用户希望看到图片，就输出 "yes"，否则输出 "no"。
+如果用户的消息中有绘画相关的请求，比如"画一张"、"生成图片"、"发张图"、"我要瞧瞧"、"我想看看"、"我想看"、"给我看"、"展示"等，或者用户询问"在干嘛"、"在做什么"、"你在干什么"、"你在做什么"、"你在忙什么"等关于当前活动的问题，就输出 "yes"，否则输出 "no"。
 """
-            
-            self.logger.info(f"[智能判断] 使用系统模型进行判断")
-            
-            # 直接获取当前使用的LLM提供商实例
-            provider = self.context.get_using_provider(umo=event.unified_msg_origin)
-            if not provider:
-                self.logger.error("[智能判断] 未找到可用的LLM提供商")
+                
+                # 构建请求体
+                request_body = {
+                    "model": judge_llm_model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "你是一个绘画请求判断专家，专门分析用户对话是否需要进行绘画生成。"
+                        },
+                        {
+                            "role": "user",
+                            "content": judge_prompt
+                        }
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 10
+                }
+                
+                # 构建请求头
+                headers = {
+                    "Content-Type": "application/json"
+                }
+                
+                # 添加API密钥
+                if judge_llm_api_key:
+                    headers["Authorization"] = f"Bearer {judge_llm_api_key}"
+                
+                # 发送请求到专门的判断大模型
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(judge_llm_api_url, json=request_body, headers=headers) as response:
+                        if response.status == 200:
+                            result = await response.json()
+                            
+                            # 解析OpenAI格式的响应
+                            if "choices" in result and result["choices"]:
+                                judgment = result["choices"][0]["message"]["content"].strip().lower()
+                                self.logger.info(f"[智能判断] 专门大模型判断结果: {judgment}")
+                                return judgment == "yes"
+                            else:
+                                self.logger.error(f"[智能判断] 专门大模型响应格式错误: {result}")
+                                return False
+                        else:
+                            self.logger.error(f"[智能判断] 专门大模型请求失败，状态码: {response.status}, 响应: {await response.text()}")
+                            return False
+                    
+            except Exception as e:
+                self.logger.error(f"[智能判断] 使用专门大模型进行判断时发生错误: {str(e)}")
+                import traceback
+                self.logger.error(traceback.format_exc())
+                # 发生错误时，默认不进行绘画
                 return False
-            
-            # 使用系统自带的LLM进行判断
-            llm_response = await self.context.llm_generate(
-                chat_provider_id=provider.meta().id,
-                prompt=judge_prompt,
-                temperature=0.1,
-                max_tokens=10
-            )
-            
-            if llm_response and hasattr(llm_response, 'completion_text') and llm_response.completion_text:
-                judgment = llm_response.completion_text.strip().lower()
-                self.logger.info(f"[智能判断] LLM判断结果: {judgment}")
-                return judgment == "yes"
-            else:
-                self.logger.error("[智能判断] LLM判断失败")
-                return False
-            
-        except Exception as e:
-            self.logger.error(f"[智能判断] 使用大模型进行判断时发生错误: {str(e)}")
-            import traceback
-            self.logger.error(traceback.format_exc())
-            # 发生错误时，默认不进行绘画
-            return False
+        
+        # 默认不进行绘画
+        self.logger.info("[智能判断] 未触发绘画")
+        return False
     
-    async def generate_prompt(self, message: str, event: AstrMessageEvent) -> str:
+    async def generate_prompt(self, message: str, event: AstrMessageEvent, llm_reply: str = "") -> str:
         """
-        基于用户消息和对话历史以及人物预设生成相关绘画提示词
+        基于用户消息、大模型回复和对话历史以及人物预设生成相关绘画提示词
         
         Args:
             message: 用户消息
             event: 消息事件对象
+            llm_reply: 大模型的回复内容
             
         Returns:
             生成的绘画提示词
@@ -766,27 +835,54 @@ class ModFlux(Star):
                 for conv in recent_conversations:
                     conversation_text += f"user: {conv['user_message']}\nassistant: {conv['bot_response']}\n"
             
+            # 检测用户是否询问当前活动状态
+            activity_query_phrases = ["在干嘛", "在做什么", "你在干什么", "你在做什么", "你在忙什么", "在忙什么"]
+            is_activity_query = any(phrase in message for phrase in activity_query_phrases)
+            
             # 构建提示词生成请求
-            prompt_gen_prompt = f"""
-Based on the following conversation history and current user message, generate a detailed English prompt suitable for text-to-image models.
+            if is_activity_query:
+                # 用户询问当前活动，使用活动相关的提示词
+                activity_prompt = self.activity_images.get(self.current_activity, self.activity_images["none"])
+                prompt_gen_prompt = f"""
+Generate a detailed English prompt for an image based on the following activity and AI response:
+
+Activity: {self.current_activity}
+
+AI response: {llm_reply}
+
+Please generate a detailed English prompt including:
+1. Main subject and scene description (related to the current activity and AI response)
+2. Art style and medium
+3. Lighting and colors
+4. Composition and perspective
+5. Emotion and atmosphere appropriate for the activity and AI response
+
+Return only the prompt, no additional explanation.
+"""
+            else:
+                # 正常对话，使用上下文相关的提示词生成
+                prompt_gen_prompt = f"""
+Based on the following conversation history, current user message, and AI response, generate a detailed English prompt suitable for text-to-image models.
 
 Conversation history:
 {conversation_text}
 
 Current user message: {message}
 
+AI response: {llm_reply}
+
 Important requirements:
-- The generated image prompt must be closely connected to the conversation history, creating a coherent and natural continuation of events
+- The generated image prompt must be closely connected to the conversation history, user message, and AI response, creating a coherent and natural continuation of events
 - Avoid creating abrupt or unrelated scenes that don't fit with the ongoing conversation
-- Ensure the image content logically follows from the dialogue context
+- Ensure the image content logically follows from the dialogue context and AI response
 - Maintain consistency with the established character profile and conversation tone
 
 Please generate a detailed English prompt including:
-1. Main subject and scene description (closely related to conversation context)
+1. Main subject and scene description (closely related to conversation context and AI response)
 2. Art style and medium
 3. Lighting and colors
 4. Composition and perspective
-5. Emotion and atmosphere that matches the conversation tone
+5. Emotion and atmosphere that matches the conversation tone and AI response
 
 Return only the prompt, no additional explanation.
 """
@@ -807,7 +903,8 @@ Return only the prompt, no additional explanation.
                 chat_provider_id=provider.meta().id,
                 prompt=prompt_gen_prompt,
                 temperature=0.7,
-                max_tokens=500
+                max_tokens=500,
+                contexts=[]  # 确保contexts是一个空列表而不是None
             )
             
             if llm_response and hasattr(llm_response, 'completion_text') and llm_response.completion_text:
@@ -836,12 +933,6 @@ Return only the prompt, no additional explanation.
         Yields:
             消息结果
         """
-        """
-        处理消息事件，用于智能绘画判断和对话
-        
-        Args:
-            event: 消息事件对象
-        """
         # 只处理文本消息
         if not event.message_str:
             return
@@ -856,10 +947,54 @@ Return only the prompt, no additional explanation.
         if should:
             self.logger.info(f"[智能绘画] 触发绘画，用户: {user_id}, 消息: {message[:50]}...")
             
-            # 生成提示词
-            prompt = await self.generate_prompt(message, event)
+            # 1. 获取当前会话使用的聊天模型 ID
+            umo = event.unified_msg_origin
+            provider_id = await self.context.get_current_chat_provider_id(umo=umo)
             
-            # 生成图片
+            # 2. 获取当前会话的对话历史
+            conv_mgr = self.context.conversation_manager
+            curr_cid = await conv_mgr.get_curr_conversation_id(umo)
+            if curr_cid:
+                conversation = await conv_mgr.get_conversation(umo, curr_cid)
+                if conversation and conversation.history:
+                    try:
+                        # 将字符串格式的对话历史解析为列表
+                        history_list = json.loads(conversation.history)
+                        contexts = history_list
+                        self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条消息")
+                    except json.JSONDecodeError:
+                        contexts = None
+                        self.logger.error("[智能绘画] 对话历史解析失败")
+                else:
+                    contexts = None
+                    self.logger.info("[智能绘画] 未获取到对话历史")
+            else:
+                contexts = None
+                self.logger.info("[智能绘画] 当前没有激活的对话")
+            
+            # 3. 调用大模型生成回复（使用对话历史）
+            self.logger.info(f"[智能绘画] 调用大模型生成回复，provider_id: {provider_id}")
+            llm_response = await self.context.llm_generate(
+                chat_provider_id=provider_id,
+                prompt=message,
+                contexts=contexts,
+                temperature=0.7,
+                max_tokens=200
+            )
+            
+            # 3. 发送回复给用户
+            if llm_response and hasattr(llm_response, 'completion_text') and llm_response.completion_text:
+                reply_text = llm_response.completion_text.strip()
+                self.logger.info(f"[智能绘画] 大模型回复: {reply_text}")
+                yield event.plain_result(reply_text)
+            else:
+                self.logger.error("[智能绘画] LLM回复生成失败")
+                reply_text = ""
+            
+            # 4. 生成提示词（包含大模型的回复内容）
+            prompt = await self.generate_prompt(message, event, llm_reply=reply_text)
+            
+            # 5. 生成图片
             image_url = await self.generate_image(prompt, user_id)
             
             if image_url:

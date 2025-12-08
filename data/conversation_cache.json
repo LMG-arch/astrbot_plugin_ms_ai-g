@@ -1,62 +1,62 @@
 [
   {
     "user_id": "astrbot",
-    "user_message": "/aiimg 一只猫",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765119779_ebdf80d5.jpg",
-    "timestamp": 1765119780.5587401
+    "user_message": "你今天穿的什么衣服你让我瞧瞧吗",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765157385_7912c09f.jpg",
+    "timestamp": 1765157385.9283254
   },
   {
     "user_id": "astrbot",
-    "user_message": "你好",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765120476_fdc591f1.jpg",
-    "timestamp": 1765120477.5325289
+    "user_message": "再让我瞧瞧",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765157476_fba177e7.jpg",
+    "timestamp": 1765157477.1854084
+  },
+  {
+    "user_id": "8249303DE98A5A06E1BC64D51EC0905F",
+    "user_message": "在干嘛",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765158087_f100cfb3.jpg",
+    "timestamp": 1765158091.5705488
   },
   {
     "user_id": "astrbot",
-    "user_message": "给我看看你的照片",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765121769_1744ed5c.jpg",
-    "timestamp": 1765121770.3934507
+    "user_message": "在干嘛",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765158306_229ba567.jpg",
+    "timestamp": 1765158307.2138524
+  },
+  {
+    "user_id": "8249303DE98A5A06E1BC64D51EC0905F",
+    "user_message": "在干嘛",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765158357_428f4f23.jpg",
+    "timestamp": 1765158362.209635
   },
   {
     "user_id": "astrbot",
-    "user_message": "能让我看看具体环境吗",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765121892_87c45859.jpg",
-    "timestamp": 1765121893.7779493
+    "user_message": "你在干什么",
+    "bot_response": "抱歉，图片生成失败，请稍后再试。",
+    "timestamp": 1765158670.0885968
   },
   {
     "user_id": "astrbot",
-    "user_message": "给我看看",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765122574_700d865b.jpg",
-    "timestamp": 1765122575.4034934
+    "user_message": "在干嘛",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765158775_bbd92ada.jpg",
+    "timestamp": 1765158775.7994502
   },
   {
     "user_id": "astrbot",
-    "user_message": "画一只小猫",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765123183_673c81f8.jpg",
-    "timestamp": 1765123184.2680717
+    "user_message": "拍张照片",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765158944_1f50a087.jpg",
+    "timestamp": 1765158945.6581678
   },
   {
-    "user_id": "astrbot",
-    "user_message": "你在干嘛给我看看",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765123269_92184f63.jpg",
-    "timestamp": 1765123269.9703133
+    "user_id": "8249303DE98A5A06E1BC64D51EC0905F",
+    "user_message": "我们的样子拍张照片",
+    "bot_response": "抱歉，图片生成失败，请稍后再试。",
+    "timestamp": 1765158984.7547624
   },
   {
-    "user_id": "astrbot",
-    "user_message": "刚给我看看你的图片",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765124248_b749c3b7.jpg",
-    "timestamp": 1765124249.0219529
-  },
-  {
-    "user_id": "astrbot",
-    "user_message": "发我一张图",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765125515_37057731.jpg",
-    "timestamp": 1765125516.0006769
-  },
-  {
-    "user_id": "astrbot",
-    "user_message": "给我一张照片",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765125800_3027fc42.jpg",
-    "timestamp": 1765125801.4638565
+    "user_id": "8249303DE98A5A06E1BC64D51EC0905F",
+    "user_message": "给我看看房间的情况",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765159228_5c2d5a9a.jpg",
+    "timestamp": 1765159232.5084617
   }
 ]
