@@ -1041,6 +1041,10 @@ Return only the prompt, no additional explanation.
                             history_list = history_list[-max_history_length:]
                             self.logger.info(f"[智能绘画] 对话历史过长，只保留最近 {max_history_length} 条消息")
                         
+                        # 处理对话历史，确保tool消息有对应的assistant消息
+                        valid_history = []
+                        has_tool_calls = False
+                        
                         for msg in history_list:
                             try:
                                 # 确保消息格式正确
@@ -1049,37 +1053,72 @@ Return only the prompt, no additional explanation.
                                     continue
                                 
                                 # 验证必要字段
-                                if 'role' not in msg or 'content' not in msg:
-                                    self.logger.warning(f"[智能绘画] 消息缺少必要字段(role/content): {msg}")
+                                if 'role' not in msg:
+                                    self.logger.warning(f"[智能绘画] 消息缺少必要字段(role): {msg}")
                                     continue
                                 
-                                # 使用辅助方法清理content字段，确保格式符合OpenAI API要求
-                                content = self.clean_message_content(msg['content'])
-                                
-                                # 只保留必要字段
-                                cleaned_msg = {
-                                    'role': msg['role'],
-                                    'content': content
-                                }
-                                
-                                # 特殊处理assistant角色的消息
+                                # 处理assistant消息
                                 if msg['role'] == 'assistant':
-                                    # 保留tool_calls字段，用于后续tool消息的对应
+                                    # 检查是否有tool_calls
                                     if 'tool_calls' in msg:
+                                        has_tool_calls = True
+                                    
+                                    # 清理content字段
+                                    content = self.clean_message_content(msg['content']) if 'content' in msg else None
+                                    
+                                    cleaned_msg = {
+                                        'role': msg['role'],
+                                        'content': content
+                                    }
+                                    
+                                    # 保留tool_calls字段
+                                    if has_tool_calls:
                                         cleaned_msg['tool_calls'] = msg['tool_calls']
+                                    
+                                    valid_history.append(cleaned_msg)
                                 
-                                # 特殊处理tool角色的消息
-                                if msg['role'] == 'tool':
-                                    # OpenAI API要求tool消息必须有tool_call_id字段
-                                    if 'tool_call_id' in msg:
-                                        cleaned_msg['tool_call_id'] = msg['tool_call_id']
+                                # 处理tool消息
+                                elif msg['role'] == 'tool':
+                                    # 只有当前面有包含tool_calls的assistant消息时，才保留tool消息
+                                    if has_tool_calls and 'tool_call_id' in msg:
+                                        # 清理content字段
+                                        content = self.clean_message_content(msg['content']) if 'content' in msg else None
+                                        
+                                        cleaned_msg = {
+                                            'role': msg['role'],
+                                            'content': content,
+                                            'tool_call_id': msg['tool_call_id']
+                                        }
+                                        
+                                        valid_history.append(cleaned_msg)
+                                        # 重置tool_calls标记
+                                        has_tool_calls = False
                                     else:
-                                        # 如果缺少tool_call_id，跳过该消息
-                                        self.logger.warning(f"[智能绘画] 跳过缺少tool_call_id的tool消息: {msg}")
+                                        self.logger.warning(f"[智能绘画] 跳过没有对应assistant消息的tool消息: {msg}")
                                         continue
                                 
-                                # 创建Message对象
-                                contexts.append(Message(**cleaned_msg))
+                                # 处理其他角色的消息
+                                else:
+                                    if 'content' not in msg:
+                                        self.logger.warning(f"[智能绘画] 消息缺少必要字段(content): {msg}")
+                                        continue
+                                    
+                                    # 清理content字段
+                                    content = self.clean_message_content(msg['content'])
+                                    
+                                    cleaned_msg = {
+                                        'role': msg['role'],
+                                        'content': content
+                                    }
+                                    
+                                    valid_history.append(cleaned_msg)
+                                    # 重置tool_calls标记
+                                    has_tool_calls = False
+                            except Exception as e:
+                                self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
+                        
+                        # 创建Message对象
+                        contexts = [Message(**msg) for msg in valid_history]
                             except Exception as e:
                                 self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
                         
