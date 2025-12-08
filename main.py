@@ -389,10 +389,48 @@ class ModFlux(Star):
         try:
             self.logger.info(f"[图片生成] 开始生成图片，提示词: {prompt[:50]}...")
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=data) as response:
-                    if response.status == 200:
-                        result = await response.json()
+            # 设置重试参数
+            max_retries = 3
+            retry_delay = 2  # 秒
+            timeout = aiohttp.ClientTimeout(total=30)  # 30秒超时
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                for retry_count in range(max_retries):
+                    try:
+                        async with session.post(url, headers=headers, json=data) as response:
+                            if response.status == 200:
+                                result = await response.json()
+                                break
+                            else:
+                                # 记录错误响应
+                                error_text = await response.text()
+                                self.logger.error(f"[图片生成] API请求失败，状态码: {response.status}, 错误: {error_text}")
+                                
+                                # 仅在非最后一次重试时进行重试
+                                if retry_count < max_retries - 1:
+                                    self.logger.info(f"[图片生成] {retry_count + 1}/{max_retries} 次请求失败，{retry_delay}秒后重试...")
+                                    await asyncio.sleep(retry_delay)
+                                    retry_delay *= 2  # 指数退避
+                                else:
+                                    # 最后一次重试失败
+                                    self.logger.error(f"[图片生成] 所有重试都失败，API请求失败，状态码: {response.status}")
+                                    return None
+                    except aiohttp.ClientError as e:
+                        # 处理网络错误
+                        self.logger.error(f"[图片生成] 网络请求失败: {str(e)}")
+                        
+                        # 仅在非最后一次重试时进行重试
+                        if retry_count < max_retries - 1:
+                            self.logger.info(f"[图片生成] {retry_count + 1}/{max_retries} 次请求失败，{retry_delay}秒后重试...")
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2  # 指数退避
+                        else:
+                            # 最后一次重试失败
+                            self.logger.error(f"[图片生成] 所有重试都失败，网络请求失败: {str(e)}")
+                            return None
+                else:
+                    # 循环正常结束，说明所有重试都失败
+                    return None
                         
                         # 根据provider或base_url解析不同的响应格式
                         if self.provider == "openai" or self.provider == "oa" or "api-inference.modelscope.cn" in self.api_url:
