@@ -1120,37 +1120,53 @@ Return only the prompt, no additional explanation.
                                 if msg['role'] == 'assistant':
                                     # 检查是否有tool_calls
                                     if 'tool_calls' in msg and msg['tool_calls']:
+                                        # 确保tool_calls是列表类型
+                                        if not isinstance(msg['tool_calls'], list):
+                                            self.logger.warning(f"[智能绘画] tool_calls不是列表类型: {msg['tool_calls']}")
+                                            # 跳过这个assistant消息，因为格式不正确
+                                            continue
+                                        
                                         # 验证并清理tool_calls
-                                        valid_tool_calls = False
+                                        valid_tool_calls = True
+                                        cleaned_tool_calls = []
                                         
                                         for tool_call in msg['tool_calls']:
                                             # 确保tool_call是字典类型
                                             if not isinstance(tool_call, dict):
                                                 self.logger.warning(f"[智能绘画] tool_call不是字典类型: {tool_call}")
-                                                continue
+                                                valid_tool_calls = False
+                                                break
                                         
                                             # 验证必要字段
                                             if 'id' not in tool_call:
                                                 self.logger.warning(f"[智能绘画] tool_call缺少id字段: {tool_call}")
-                                                continue
+                                                valid_tool_calls = False
+                                                break
                                         
                                             if 'type' not in tool_call or tool_call['type'] != 'function':
                                                 self.logger.warning(f"[智能绘画] tool_call类型不是function: {tool_call}")
-                                                continue
+                                                valid_tool_calls = False
+                                                break
                                         
                                             if 'function' not in tool_call or not isinstance(tool_call['function'], dict):
                                                 self.logger.warning(f"[智能绘画] tool_call缺少function字段或格式不正确: {tool_call}")
-                                                continue
+                                                valid_tool_calls = False
+                                                break
                                         
-                                            if 'name' not in tool_call['function']:
-                                                self.logger.warning(f"[智能绘画] tool_call的function缺少name字段: {tool_call}")
-                                                continue
+                                            if 'name' not in tool_call['function'] or not tool_call['function']['name']:
+                                                self.logger.warning(f"[智能绘画] tool_call的function缺少name字段或name为空: {tool_call}")
+                                                valid_tool_calls = False
+                                                break
+                                        
+                                            if 'arguments' not in tool_call['function'] or not isinstance(tool_call['function']['arguments'], str):
+                                                self.logger.warning(f"[智能绘画] tool_call的function缺少arguments字段或格式不正确: {tool_call}")
+                                                valid_tool_calls = False
+                                                break
                                         
                                             # 添加到清理后的tool_calls列表
                                             cleaned_tool_calls.append(tool_call)
-                                            valid_tool_calls = True
                                     
-                                        if valid_tool_calls:
+                                        if valid_tool_calls and cleaned_tool_calls:
                                             has_tool_calls = True
                                             # 记录tool_calls中的id
                                             last_tool_calls_ids = [tc['id'] for tc in cleaned_tool_calls]
@@ -1163,20 +1179,76 @@ Return only the prompt, no additional explanation.
                                         cleaned_msg['tool_calls'] = cleaned_tool_calls
                                     else:
                                         # 只有当没有tool_calls时，才添加content字段
-                                        content = self.clean_message_content(msg['content']) if 'content' in msg else None
-                                        cleaned_msg['content'] = content
-                                    
-                                    # 确保assistant消息有合法格式（content或tool_calls至少有一个）
-                                    has_content = 'content' in cleaned_msg and cleaned_msg['content']
-                                    if not has_content and not has_tool_calls:
-                                        # 如果assistant消息既没有content也没有tool_calls，跳过该消息
-                                        self.logger.warning(f"[智能绘画] 跳过格式不合法的assistant消息: {msg}")
-                                        continue
+                                        if 'content' in msg:
+                                            # 检查content是否为None
+                                            if msg['content'] is None:
+                                                self.logger.warning(f"[智能绘画] assistant消息content为None: {msg}")
+                                                continue
+                                            
+                                            # 清理content字段
+                                            content = self.clean_message_content(msg['content'])
+                                            
+                                            # 确保content不为None且不为空字符串
+                                            if content is None:
+                                                self.logger.warning(f"[智能绘画] assistant消息content清理后为None: {msg}")
+                                                continue
+                                            
+                                            if isinstance(content, str) and not content:
+                                                self.logger.warning(f"[智能绘画] assistant消息content为空字符串: {msg}")
+                                                continue
+                                            
+                                            # 根据OpenAI API要求，assistant消息的content必须是字符串
+                                            if isinstance(content, list):
+                                                # 转换为字符串
+                                                content_str = ""
+                                                for part in content:
+                                                    if isinstance(part, dict) and part.get('type') == 'text' and 'text' in part:
+                                                        content_str += part['text']
+                                                
+                                                # 确保转换后content不为空
+                                                if not content_str:
+                                                    self.logger.warning(f"[智能绘画] assistant消息content转换后为空: {msg}")
+                                                    continue
+                                                
+                                                content = content_str
+                                            
+                                            cleaned_msg['content'] = content
+                                        else:
+                                            # 既没有tool_calls也没有content，跳过
+                                            self.logger.warning(f"[智能绘画] 跳过格式不合法的assistant消息(缺少content或tool_calls): {msg}")
+                                            continue
                                 elif msg['role'] == 'tool':
                                     # 只有当前面有包含tool_calls的assistant消息，且tool_call_id匹配时，才保留tool消息
                                     if has_tool_calls and 'tool_call_id' in msg and msg['tool_call_id'] in last_tool_calls_ids:
+                                        # 验证tool消息的必要字段
+                                        if 'content' not in msg:
+                                            self.logger.warning(f"[智能绘画] tool消息缺少content字段: {msg}")
+                                            continue
+                                        
+                                        # 检查content是否为None
+                                        if msg['content'] is None:
+                                            self.logger.warning(f"[智能绘画] tool消息content为None: {msg}")
+                                            continue
+                                        
                                         # 清理content字段
-                                        content = self.clean_message_content(msg['content']) if 'content' in msg else None
+                                        content = self.clean_message_content(msg['content'])
+                                        
+                                        # 根据OpenAI API要求，tool消息的content必须是字符串
+                                        if not isinstance(content, str):
+                                            # 转换为字符串
+                                            if isinstance(content, list):
+                                                content_str = ""
+                                                for part in content:
+                                                    if isinstance(part, dict) and part.get('type') == 'text' and 'text' in part:
+                                                        content_str += part['text']
+                                                content = content_str
+                                            else:
+                                                content = str(content)
+                                        
+                                        # 确保content不为空字符串
+                                        if not content:
+                                            self.logger.warning(f"[智能绘画] tool消息content为空: {msg}")
+                                            continue
                                         
                                         cleaned_msg = {
                                             'role': msg['role'],
@@ -1196,8 +1268,18 @@ Return only the prompt, no additional explanation.
                                         self.logger.warning(f"[智能绘画] 消息缺少必要字段(content): {msg}")
                                         continue
                                     
+                                    # 检查msg['content']是否为None
+                                    if msg['content'] is None:
+                                        self.logger.warning(f"[智能绘画] 消息content字段为None: {msg}")
+                                        continue
+                                    
                                     # 清理content字段
                                     content = self.clean_message_content(msg['content'])
+                                    
+                                    # 确保content不为None
+                                    if content is None:
+                                        self.logger.warning(f"[智能绘画] 清理后content为None: {msg}")
+                                        continue
                                     
                                     # 根据OpenAI API要求，只有user消息可以包含多模态内容（content是列表）
                                     if msg['role'] != 'user' and isinstance(content, list):
@@ -1209,16 +1291,25 @@ Return only the prompt, no additional explanation.
                                                     content_str += part['text']
                                                 elif part.get('type') == 'image_url':
                                                     content_str += "[图片]"
-                                        content = content_str if content_str else ""
+                                        content = content_str
+                                        
+                                        # 确保转换后content不为空
+                                        if not content:
+                                            self.logger.warning(f"[智能绘画] 多模态内容转换后为空: {msg}")
+                                            continue
+                                    
+                                    # 对于单模态内容，确保不为空字符串
+                                    elif isinstance(content, str) and not content:
+                                        self.logger.warning(f"[智能绘画] 消息content为空字符串: {msg}")
+                                        continue
+                                    
+                                    # 确保消息role合法
+                                    valid_roles = ['system', 'user', 'assistant', 'tool']
+                                    if msg['role'] not in valid_roles:
+                                        self.logger.warning(f"[智能绘画] 消息角色不合法: {msg['role']}")
+                                        continue
                                     
                                     cleaned_msg['content'] = content
-                                    
-                                    # 确保消息有合法格式（content不为空）
-                                    has_content = 'content' in cleaned_msg and cleaned_msg['content']
-                                    if not has_content:
-                                        # 如果消息没有content，跳过该消息
-                                        self.logger.warning(f"[智能绘画] 跳过格式不合法的消息: {msg}")
-                                        continue
                                 
                                 valid_history.append(cleaned_msg)
                             except Exception as e:
