@@ -1264,6 +1264,9 @@ Return only the prompt, no additional explanation.
                                         self.logger.warning(f"[智能绘画] 跳过没有对应assistant消息的tool消息: {msg}")
                                         continue
                                 else:
+                                    # 初始化cleaned_msg
+                                    cleaned_msg = {'role': msg['role']}
+                                    
                                     if 'content' not in msg:
                                         self.logger.warning(f"[智能绘画] 消息缺少必要字段(content): {msg}")
                                         continue
