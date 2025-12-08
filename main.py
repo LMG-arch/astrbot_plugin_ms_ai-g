@@ -1109,12 +1109,18 @@ Return only the prompt, no additional explanation.
                                     self.logger.warning(f"[智能绘画] 消息缺少必要字段(role): {msg}")
                                     continue
                                 
-                                # 处理assistant消息
+                                # 初始化每次循环需要重置的变量
+                                cleaned_tool_calls = []
+                                
+                                # 初始化cleaned_msg，确保每次循环都有新的实例
+                                cleaned_msg = {
+                                    'role': msg['role']
+                                }
+                                
                                 if msg['role'] == 'assistant':
                                     # 检查是否有tool_calls
                                     if 'tool_calls' in msg and msg['tool_calls']:
                                         # 验证并清理tool_calls
-                                        cleaned_tool_calls = []
                                         valid_tool_calls = False
                                         
                                         for tool_call in msg['tool_calls']:
@@ -1152,10 +1158,6 @@ Return only the prompt, no additional explanation.
                                             has_tool_calls = False
                                             last_tool_calls_ids = []
                                     
-                                        cleaned_msg = {
-                                        'role': msg['role']
-                                    }
-                                    
                                     # 根据OpenAI API要求，assistant消息不应该同时包含content和tool_calls
                                     if has_tool_calls:
                                         cleaned_msg['tool_calls'] = cleaned_tool_calls
@@ -1166,14 +1168,10 @@ Return only the prompt, no additional explanation.
                                     
                                     # 确保assistant消息有合法格式（content或tool_calls至少有一个）
                                     has_content = 'content' in cleaned_msg and cleaned_msg['content']
-                                    if msg['role'] == 'assistant' and not has_content and not has_tool_calls:
+                                    if not has_content and not has_tool_calls:
                                         # 如果assistant消息既没有content也没有tool_calls，跳过该消息
                                         self.logger.warning(f"[智能绘画] 跳过格式不合法的assistant消息: {msg}")
                                         continue
-                                    
-                                    valid_history.append(cleaned_msg)
-                                
-                                # 处理tool消息
                                 elif msg['role'] == 'tool':
                                     # 只有当前面有包含tool_calls的assistant消息，且tool_call_id匹配时，才保留tool消息
                                     if has_tool_calls and 'tool_call_id' in msg and msg['tool_call_id'] in last_tool_calls_ids:
@@ -1193,8 +1191,6 @@ Return only the prompt, no additional explanation.
                                     else:
                                         self.logger.warning(f"[智能绘画] 跳过没有对应assistant消息的tool消息: {msg}")
                                         continue
-                                
-                                # 处理其他角色的消息（user、system等）
                                 else:
                                     if 'content' not in msg:
                                         self.logger.warning(f"[智能绘画] 消息缺少必要字段(content): {msg}")
@@ -1215,16 +1211,16 @@ Return only the prompt, no additional explanation.
                                                     content_str += "[图片]"
                                         content = content_str if content_str else ""
                                     
-                                    # 只保留必要的字段，确保符合OpenAI API要求
-                                    cleaned_msg = {
-                                        'role': msg['role'],
-                                        'content': content
-                                    }
+                                    cleaned_msg['content'] = content
                                     
-                                    valid_history.append(cleaned_msg)
-                                    # 重置tool_calls标记
-                                    has_tool_calls = False
-                                    last_tool_calls_ids = []
+                                    # 确保消息有合法格式（content不为空）
+                                    has_content = 'content' in cleaned_msg and cleaned_msg['content']
+                                    if not has_content:
+                                        # 如果消息没有content，跳过该消息
+                                        self.logger.warning(f"[智能绘画] 跳过格式不合法的消息: {msg}")
+                                        continue
+                                
+                                valid_history.append(cleaned_msg)
                             except Exception as e:
                                 self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
                         
