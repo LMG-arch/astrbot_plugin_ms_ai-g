@@ -1034,45 +1034,55 @@ Return only the prompt, no additional explanation.
                         # 转换为 Message 对象列表
                         from astrbot.core.agent.message import Message
                         contexts = []
+                        
+                        # 限制上下文长度，只保留最近的100条消息
+                        max_history_length = 100
+                        if len(history_list) > max_history_length:
+                            history_list = history_list[-max_history_length:]
+                            self.logger.info(f"[智能绘画] 对话历史过长，只保留最近 {max_history_length} 条消息")
+                        
                         for msg in history_list:
-                            # 确保消息格式正确
-                            if isinstance(msg, dict):
+                            try:
+                                # 确保消息格式正确
+                                if not isinstance(msg, dict):
+                                    self.logger.warning(f"[智能绘画] 消息格式不是字典: {msg}")
+                                    continue
+                                
                                 # 验证必要字段
-                                if 'role' in msg and 'content' in msg:
-                                    # 使用辅助方法清理content字段，确保格式符合OpenAI API要求
-                                    content = self.clean_message_content(msg['content'])
-                                    
-                                    # 只保留必要字段
-                                    cleaned_msg = {
-                                        'role': msg['role'],
-                                        'content': content
-                                    }
-                                    
-                                    # 特殊处理assistant角色的消息
-                                    if msg['role'] == 'assistant':
-                                        # 保留tool_calls字段，用于后续tool消息的对应
-                                        if 'tool_calls' in msg:
-                                            cleaned_msg['tool_calls'] = msg['tool_calls']
-                                    
-                                    # 特殊处理tool角色的消息
-                                    if msg['role'] == 'tool':
-                                        # OpenAI API要求tool消息必须有tool_call_id字段
-                                        if 'tool_call_id' in msg:
-                                            cleaned_msg['tool_call_id'] = msg['tool_call_id']
-                                        else:
-                                            # 如果缺少tool_call_id，跳过该消息
-                                            self.logger.warning(f"[智能绘画] 跳过缺少tool_call_id的tool消息: {msg}")
-                                            continue
-                                    
-                                    # 创建Message对象
-                                    try:
-                                        contexts.append(Message(**cleaned_msg))
-                                    except Exception as e:
-                                        self.logger.warning(f"[智能绘画] 创建Message对象失败，跳过该消息: {e}")
-                                else:
+                                if 'role' not in msg or 'content' not in msg:
                                     self.logger.warning(f"[智能绘画] 消息缺少必要字段(role/content): {msg}")
-                            else:
-                                self.logger.warning(f"[智能绘画] 消息格式不是字典: {msg}")
+                                    continue
+                                
+                                # 使用辅助方法清理content字段，确保格式符合OpenAI API要求
+                                content = self.clean_message_content(msg['content'])
+                                
+                                # 只保留必要字段
+                                cleaned_msg = {
+                                    'role': msg['role'],
+                                    'content': content
+                                }
+                                
+                                # 特殊处理assistant角色的消息
+                                if msg['role'] == 'assistant':
+                                    # 保留tool_calls字段，用于后续tool消息的对应
+                                    if 'tool_calls' in msg:
+                                        cleaned_msg['tool_calls'] = msg['tool_calls']
+                                
+                                # 特殊处理tool角色的消息
+                                if msg['role'] == 'tool':
+                                    # OpenAI API要求tool消息必须有tool_call_id字段
+                                    if 'tool_call_id' in msg:
+                                        cleaned_msg['tool_call_id'] = msg['tool_call_id']
+                                    else:
+                                        # 如果缺少tool_call_id，跳过该消息
+                                        self.logger.warning(f"[智能绘画] 跳过缺少tool_call_id的tool消息: {msg}")
+                                        continue
+                                
+                                # 创建Message对象
+                                contexts.append(Message(**cleaned_msg))
+                            except Exception as e:
+                                self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
+                        
                         self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条有效消息")
                     except json.JSONDecodeError:
                         contexts = None
