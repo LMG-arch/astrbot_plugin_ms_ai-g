@@ -390,9 +390,9 @@ class ModFlux(Star):
             self.logger.info(f"[图片生成] 开始生成图片，提示词: {prompt[:50]}...")
             
             # 设置重试参数
-            max_retries = 3
-            retry_delay = 2  # 秒
-            timeout = aiohttp.ClientTimeout(total=30)  # 30秒超时
+            max_retries = 5  # 增加重试次数
+            retry_delay = 3  # 增加初始重试延迟
+            timeout = aiohttp.ClientTimeout(total=60)  # 增加总超时时间到60秒
             
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 for retry_count in range(max_retries):
@@ -416,8 +416,13 @@ class ModFlux(Star):
                                     self.logger.error(f"[图片生成] 所有重试都失败，API请求失败，状态码: {response.status}")
                                     return None
                     except aiohttp.ClientError as e:
-                        # 处理网络错误
-                        self.logger.error(f"[图片生成] 网络请求失败: {str(e)}")
+                        # 处理网络错误，特别是连接中断错误
+                        error_msg = str(e)
+                        self.logger.error(f"[图片生成] 网络请求失败: {error_msg}")
+                        
+                        # 连接中断错误需要特别处理
+                        if "Software caused connection abort" in error_msg or "Errno 103" in error_msg:
+                            self.logger.error(f"[图片生成] 检测到连接中断错误，这可能是网络不稳定导致的")
                         
                         # 仅在非最后一次重试时进行重试
                         if retry_count < max_retries - 1:
@@ -426,7 +431,7 @@ class ModFlux(Star):
                             retry_delay *= 2  # 指数退避
                         else:
                             # 最后一次重试失败
-                            self.logger.error(f"[图片生成] 所有重试都失败，网络请求失败: {str(e)}")
+                            self.logger.error(f"[图片生成] 所有重试都失败，网络请求失败: {error_msg}")
                             return None
                 else:
                     # 循环正常结束，说明所有重试都失败
@@ -1105,11 +1110,12 @@ Return only the prompt, no additional explanation.
                     # 添加到对话缓存
                     self.add_to_conversation_cache(user_id, message, f"已生成图片: {image_path}")
                 else:
-                    # 如果下载失败，发送URL
-                    yield event.plain_result(f"图片生成成功: {image_url}")
-                    self.logger.info(f"[智能绘画] 图片URL已发送: {image_url}")
+                    # 下载失败，发送错误提示
+                    error_msg = "抱歉，图片下载失败，请稍后再试。"
+                    yield event.plain_result(error_msg)
+                    self.logger.error(f"[智能绘画] 图片下载失败: {image_url}")
                     # 添加到对话缓存
-                    self.add_to_conversation_cache(user_id, message, f"已生成图片: {image_url}")
+                    self.add_to_conversation_cache(user_id, message, error_msg)
             else:
                 error_msg = "抱歉，图片生成失败，请稍后再试。"
                 yield event.plain_result(error_msg)
@@ -1170,11 +1176,12 @@ Return only the prompt, no additional explanation.
                 # 添加到对话缓存
                 self.add_to_conversation_cache(user_id, f"/aiimg {prompt}", f"已生成图片: {image_path}")
             else:
-                # 如果下载失败，发送URL
-                yield event.plain_result(f"图片生成成功: {image_url}")
-                self.logger.info(f"[命令绘画] 图片URL已发送: {image_url}")
+                # 下载失败，发送错误提示
+                error_msg = "抱歉，图片下载失败，请稍后再试。"
+                yield event.plain_result(error_msg)
+                self.logger.error(f"[命令绘画] 图片下载失败: {image_url}")
                 # 添加到对话缓存
-                self.add_to_conversation_cache(user_id, f"/aiimg {prompt}", f"已生成图片: {image_url}")
+                self.add_to_conversation_cache(user_id, f"/aiimg {prompt}", error_msg)
         else:
             yield event.plain_result("抱歉，图片生成失败，请稍后再试。")
             self.logger.error("[命令绘画] 图片生成失败")
