@@ -14,7 +14,7 @@ import hashlib
 import io
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional, Union, AsyncGenerator
+from typing import Dict, List, Optional, Union, AsyncGenerator, Awaitable, Any
 from datetime import datetime
 import PIL
 from PIL import Image
@@ -431,112 +431,41 @@ class ModFlux(Star):
                 else:
                     # 循环正常结束，说明所有重试都失败
                     return None
-                        
-                        # 根据provider或base_url解析不同的响应格式
-                        if self.provider == "openai" or self.provider == "oa" or "api-inference.modelscope.cn" in self.api_url:
-                            # OpenAI响应格式（适用于api-inference.modelscope.cn和显式设置的openai provider）
-                            # 记录完整响应以便调试
-                            self.logger.info(f"[图片生成] API响应内容: {json.dumps(result, ensure_ascii=False)}")
-                            
-                            # 首先尝试OpenAI标准格式
-                            data_list = result.get("data", [])
-                            if data_list:
-                                image_url = data_list[0].get("url")
+                
+                # 根据provider或base_url解析不同的响应格式
+                if self.provider == "openai" or self.provider == "oa" or "api-inference.modelscope.cn" in self.api_url:
+                    # OpenAI响应格式（适用于api-inference.modelscope.cn和显式设置的openai provider）
+                    # 记录完整响应以便调试
+                    self.logger.info(f"[图片生成] API响应内容: {json.dumps(result, ensure_ascii=False)}")
+                    
+                    # 首先尝试OpenAI标准格式
+                    data_list = result.get("data", [])
+                    if data_list:
+                        image_url = data_list[0].get("url")
+                        if image_url:
+                            self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
+                            return image_url
+                        else:
+                            self.logger.error("[图片生成] OpenAI响应中未找到图片URL")
+                    else:
+                        # 尝试ModelScope API的兼容格式
+                        self.logger.info("[图片生成] 尝试使用ModelScope兼容格式解析响应")
+                        output = result.get("output")
+                        if output:
+                            if isinstance(output, list) and len(output) > 0:
+                                image_url = output[0].get("url")
                                 if image_url:
                                     self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
                                     return image_url
                                 else:
-                                    self.logger.error("[图片生成] OpenAI响应中未找到图片URL")
-                            else:
-                                # 尝试ModelScope API的兼容格式
-                                self.logger.info("[图片生成] 尝试使用ModelScope兼容格式解析响应")
-                                output = result.get("output")
-                                if output:
-                                    if isinstance(output, list) and len(output) > 0:
-                                        image_url = output[0].get("url")
-                                        if image_url:
-                                            self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
-                                            return image_url
-                                        else:
-                                            self.logger.error("[图片生成] ModelScope兼容响应中未找到图片URL")
-                                    elif isinstance(output, dict):
-                                        image_url = output.get("url")
-                                        if image_url:
-                                            self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
-                                            return image_url
-                                        else:
-                                            # 检查是否包含images列表
-                                            images = output.get("images", [])
-                                            if images and isinstance(images, list):
-                                                if isinstance(images[0], dict) and "url" in images[0]:
-                                                    image_url = images[0].get("url")
-                                                    if image_url:
-                                                        self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
-                                                        return image_url
-                                                elif isinstance(images[0], str):
-                                                    # 如果是base64字符串，需要保存为文件
-                                                    try:
-                                                        # 解码base64字符串
-                                                        if images[0].startswith("data:image/"):
-                                                            # 移除数据URL前缀
-                                                            base64_data = images[0].split(",")[1]
-                                                        else:
-                                                            base64_data = images[0]
-                                                             
-                                                        image_data = base64.b64decode(base64_data)
-                                                         
-                                                        # 生成文件名
-                                                        timestamp = int(time.time())
-                                                        file_name = f"img_{timestamp}.jpg"
-                                                        file_path = self.temp_dir / file_name
-                                                         
-                                                        # 保存图片
-                                                        img = Image.open(io.BytesIO(image_data))  # type: ignore[attr-defined]
-                                                        img.save(file_path)
-                                                        self.logger.info(f"[图片生成] 图片生成成功，已保存到本地: {file_path}")
-                                                        return str(file_path)
-                                                    except Exception as e:
-                                                        self.logger.error(f"[图片生成] 处理base64图片数据失败: {str(e)}")
-                                    else:
-                                        self.logger.error(f"[图片生成] 响应output格式不匹配: {output}")
+                                    self.logger.error("[图片生成] ModelScope兼容响应中未找到图片URL")
+                            elif isinstance(output, dict):
+                                image_url = output.get("url")
+                                if image_url:
+                                    self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
+                                    return image_url
                                 else:
-                                    # 尝试直接从根级别查找images字段
-                                    images = result.get("images", [])
-                                    if images:
-                                        self.logger.info(f"[图片生成] 从根级别找到images字段: {images}")
-                                        if isinstance(images[0], dict) and "url" in images[0]:
-                                            image_url = images[0].get("url")
-                                            if image_url:
-                                                self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
-                                                return image_url
-                                        elif isinstance(images[0], str):
-                                            # 直接返回图片URL
-                                            self.logger.info(f"[图片生成] 图片生成成功，URL: {images[0]}")
-                                            return images[0]
-                                    
-                                    self.logger.error("[图片生成] 无法解析API响应格式")
-                        else:
-                            # 默认ModelScope响应格式
-                            # ModelScope的响应通常包含output字段
-                            self.logger.info(f"[图片生成] ModelScope API响应: {result}")
-                            # ModelScope的响应格式应该包含output字段
-                            output = result.get("output")
-                            if output:
-                                # 检查output是否是列表
-                                if isinstance(output, list) and len(output) > 0:
-                                    image_url = output[0].get("url")
-                                    if image_url:
-                                        self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
-                                        return image_url
-                                    else:
-                                        self.logger.error("[图片生成] 响应output中未找到图片URL")
-                                elif isinstance(output, dict):
-                                    # 检查是否直接包含url
-                                    image_url = output.get("url")
-                                    if image_url:
-                                        self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
-                                        return image_url
-                                    # 或者检查是否包含images列表
+                                    # 检查是否包含images列表
                                     images = output.get("images", [])
                                     if images and isinstance(images, list):
                                         if isinstance(images[0], dict) and "url" in images[0]:
@@ -546,7 +475,6 @@ class ModFlux(Star):
                                                 return image_url
                                         elif isinstance(images[0], str):
                                             # 如果是base64字符串，需要保存为文件
-                                            
                                             try:
                                                 # 解码base64字符串
                                                 if images[0].startswith("data:image/"):
@@ -569,44 +497,113 @@ class ModFlux(Star):
                                                 return str(file_path)
                                             except Exception as e:
                                                 self.logger.error(f"[图片生成] 处理base64图片数据失败: {str(e)}")
-                                    else:
-                                        self.logger.error(f"[图片生成] 响应output格式不匹配: {output}")
-                                else:
-                                    self.logger.error(f"[图片生成] 响应output格式不匹配: {output}")
                             else:
-                                # 尝试兼容旧格式
-                                images = result.get("images", [])
-                                if images:
-                                    if isinstance(images[0], dict) and "url" in images[0]:
-                                        image_url = images[0].get("url")
-                                        if image_url:
-                                            self.logger.info(f"[图片生成] 图片生成成功（旧格式），URL: {image_url}")
-                                            return image_url
-                                    elif isinstance(images[0], str):
-                                        # 如果是base64字符串，需要保存为文件
+                                self.logger.error(f"[图片生成] 响应output格式不匹配: {output}")
+                        else:
+                            # 尝试直接从根级别查找images字段
+                            images = result.get("images", [])
+                            if images:
+                                self.logger.info(f"[图片生成] 从根级别找到images字段: {images}")
+                                if isinstance(images[0], dict) and "url" in images[0]:
+                                    image_url = images[0].get("url")
+                                    if image_url:
+                                        self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
+                                        return image_url
+                                elif isinstance(images[0], str):
+                                    # 直接返回图片URL
+                                    self.logger.info(f"[图片生成] 图片生成成功，URL: {images[0]}")
+                                    return images[0]
+                            
+                            self.logger.error("[图片生成] 无法解析API响应格式")
+                else:
+                    # 默认ModelScope响应格式
+                    # ModelScope的响应通常包含output字段
+                    self.logger.info(f"[图片生成] ModelScope API响应: {result}")
+                    # ModelScope的响应格式应该包含output字段
+                    output = result.get("output")
+                    if output:
+                        # 检查output是否是列表
+                        if isinstance(output, list) and len(output) > 0:
+                            image_url = output[0].get("url")
+                            if image_url:
+                                self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
+                                return image_url
+                            else:
+                                self.logger.error("[图片生成] 响应output中未找到图片URL")
+                        elif isinstance(output, dict):
+                            # 检查是否直接包含url
+                            image_url = output.get("url")
+                            if image_url:
+                                self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
+                                return image_url
+                            # 或者检查是否包含images列表
+                            images = output.get("images", [])
+                            if images and isinstance(images, list):
+                                if isinstance(images[0], dict) and "url" in images[0]:
+                                    image_url = images[0].get("url")
+                                    if image_url:
+                                        self.logger.info(f"[图片生成] 图片生成成功，URL: {image_url}")
+                                        return image_url
+                                elif isinstance(images[0], str):
+                                    # 如果是base64字符串，需要保存为文件
+                                    try:
+                                        # 解码base64字符串
+                                        if images[0].startswith("data:image/"):
+                                            # 移除数据URL前缀
+                                            base64_data = images[0].split(",")[1]
+                                        else:
+                                            base64_data = images[0]
+                                            
+                                        image_data = base64.b64decode(base64_data)
                                         
-                                        try:
-                                            # 解码base64字符串
-                                            if images[0].startswith("data:image/"):
-                                                # 移除数据URL前缀
-                                                base64_data = images[0].split(",")[1]
-                                            else:
-                                                base64_data = images[0]
-                                                
-                                            image_data = base64.b64decode(base64_data)
+                                        # 生成文件名
+                                        timestamp = int(time.time())
+                                        file_name = f"img_{timestamp}.jpg"
+                                        file_path = self.temp_dir / file_name
+                                        
+                                        # 保存图片
+                                        img = Image.open(io.BytesIO(image_data))  # type: ignore[attr-defined]
+                                        img.save(file_path)
+                                        self.logger.info(f"[图片生成] 图片生成成功，已保存到本地: {file_path}")
+                                        return str(file_path)
+                                    except Exception as e:
+                                        self.logger.error(f"[图片生成] 处理base64图片数据失败: {str(e)}")
+                            else:
+                                self.logger.error(f"[图片生成] 响应output格式不匹配: {output}")
+                        else:
+                            # 尝试兼容旧格式
+                            images = result.get("images", [])
+                            if images:
+                                if isinstance(images[0], dict) and "url" in images[0]:
+                                    image_url = images[0].get("url")
+                                    if image_url:
+                                        self.logger.info(f"[图片生成] 图片生成成功（旧格式），URL: {image_url}")
+                                        return image_url
+                                elif isinstance(images[0], str):
+                                    # 如果是base64字符串，需要保存为文件
+                                    
+                                    try:
+                                        # 解码base64字符串
+                                        if images[0].startswith("data:image/"):
+                                            # 移除数据URL前缀
+                                            base64_data = images[0].split(",")[1]
+                                        else:
+                                            base64_data = images[0]
                                             
-                                            # 生成文件名
-                                            timestamp = int(time.time())
-                                            file_name = f"img_{timestamp}.jpg"
-                                            file_path = self.temp_dir / file_name
-                                            
-                                            # 保存图片
-                                            img = Image.open(io.BytesIO(image_data))  # type: ignore[attr-defined]
-                                            img.save(file_path)
-                                            self.logger.info(f"[图片生成] 图片生成成功（旧格式），已保存到本地: {file_path}")
-                                            return str(file_path)
-                                        except Exception as e:
-                                            self.logger.error(f"[图片生成] 处理base64图片数据失败（旧格式）: {str(e)}")
+                                        image_data = base64.b64decode(base64_data)
+                                        
+                                        # 生成文件名
+                                        timestamp = int(time.time())
+                                        file_name = f"img_{timestamp}.jpg"
+                                        file_path = self.temp_dir / file_name
+                                        
+                                        # 保存图片
+                                        img = Image.open(io.BytesIO(image_data))  # type: ignore[attr-defined]
+                                        img.save(file_path)
+                                        self.logger.info(f"[图片生成] 图片生成成功（旧格式），已保存到本地: {file_path}")
+                                        return str(file_path)
+                                    except Exception as e:
+                                        self.logger.error(f"[图片生成] 处理base64图片数据失败（旧格式）: {str(e)}")
                                 else:
                                     self.logger.error("[图片生成] 响应中未找到图片数据")
                     else:
@@ -648,6 +645,43 @@ class ModFlux(Star):
             self.logger.error(f"[图片下载] 下载图片时发生错误: {str(e)}")
         
         return None
+    
+    def clean_message_content(self, content):
+        """
+        清理和转换消息内容，确保符合OpenAI API要求
+        
+        Args:
+            content: 原始消息内容
+            
+        Returns:
+            清理后的消息内容
+        """
+        if not content:
+            return ""
+        
+        # 如果是字典，提取message_str或转换为字符串
+        if isinstance(content, dict):
+            return content.get('message_str', str(content))
+        
+        # 如果是列表，确保只包含有效的TextPart或ImageURLPart类型的字典
+        elif isinstance(content, list):
+            cleaned_content = []
+            for part in content:
+                if isinstance(part, dict):
+                    part_type = part.get('type')
+                    if part_type == 'text' and 'text' in part:
+                        cleaned_content.append({'type': 'text', 'text': part['text']})
+                    elif part_type == 'image_url' and 'image_url' in part:
+                        # 确保image_url是字典格式
+                        if isinstance(part['image_url'], dict):
+                            cleaned_content.append(part)
+                        elif isinstance(part['image_url'], str):
+                            cleaned_content.append({'type': 'image_url', 'image_url': {'url': part['image_url']}})
+                # 跳过非字典类型的内容部分
+            return cleaned_content if cleaned_content else ""
+        
+        # 其他类型转换为字符串
+        return str(content)
     
     async def should_paint(self, message: str, user_id: str, event: AstrMessageEvent) -> bool:
         """
@@ -711,7 +745,7 @@ class ModFlux(Star):
                 # 获取系统消息历史
                 try:
                     # 从event中获取platform_id和user_id
-                    platform_id = event.platform_meta.id
+                    platform_id = event.platform_meta.id or event.platform_meta.name
                     user_id = event.unified_msg_origin
                     
                     system_messages = await self.context.message_history_manager.get(
@@ -720,13 +754,13 @@ class ModFlux(Star):
                         page=1,
                         page_size=5
                     )
-                    
+                        
                     conversation_text = ""
                     if system_messages:
                         for msg in system_messages:
                             # 解析消息内容
-                            if msg.content and isinstance(msg.content, dict):
-                                content = msg.content.get('message_str', '')
+                            if msg.content:
+                                content = self.clean_message_content(msg.content)
                                 sender_name = msg.sender_name or ''
                                 role = "user" if sender_name != "AstrBot" else "assistant"
                                 conversation_text += f"{role}: {content}\n"
@@ -831,7 +865,7 @@ class ModFlux(Star):
             
             # 使用正确的API方法获取消息历史
             # 从event中获取platform_id和user_id
-            platform_id = event.platform_meta.id
+            platform_id = event.platform_meta.id or event.platform_meta.name
             user_id = event.unified_msg_origin
             
             try:
@@ -955,14 +989,14 @@ Return only the prompt, no additional explanation.
 
     
     @filter.event_message_type(filter.EventMessageType.ALL)
-    async def on_message(self, event: AstrMessageEvent, *args, **kwargs) -> AsyncGenerator:
+    async def on_message(self, event: AstrMessageEvent, *args, **kwargs) -> Awaitable[Any]:
         """
         处理消息事件，用于智能绘画判断和对话
         
         Args:
             event: 消息事件对象
         
-        Yields:
+        Returns:
             消息结果
         """
         # 只处理文本消息
@@ -1000,55 +1034,23 @@ Return only the prompt, no additional explanation.
                             if isinstance(msg, dict):
                                 # 验证必要字段
                                 if 'role' in msg and 'content' in msg:
-                                    # 处理content字段，确保格式符合OpenAI API要求
-                                    content = msg['content']
-                                    
-                                    # 如果content是字典，提取message_str或转换为字符串
-                                    if isinstance(content, dict):
-                                        # 提取message_str作为content
-                                        content = content.get('message_str', '')
-                                    
-                                    # 如果content是列表，确保只包含TextPart或ImageURLPart类型的字典
-                                    elif isinstance(content, list):
-                                        cleaned_content = []
-                                        for part in content:
-                                            if isinstance(part, dict):
-                                                part_type = part.get('type')
-                                                if part_type == 'text' and 'text' in part:
-                                                    cleaned_content.append({'type': 'text', 'text': part['text']})
-                                                elif part_type == 'image_url' and 'image_url' in part:
-                                                    # 确保image_url是字典格式
-                                                    if isinstance(part['image_url'], dict):
-                                                        cleaned_content.append(part)
-                                                    elif isinstance(part['image_url'], str):
-                                                        cleaned_content.append({'type': 'image_url', 'image_url': {'url': part['image_url']}})
-                                                else:
-                                                    # 跳过不支持的内容类型
-                                                    self.logger.warning(f"[智能绘画] 跳过不支持的内容类型: {part}")
-                                            else:
-                                                # 跳过非字典类型的内容部分
-                                                self.logger.warning(f"[智能绘画] 跳过非字典类型的内容部分: {part}")
-                                        # 如果清理后的内容列表为空，使用空字符串
-                                        content = cleaned_content if cleaned_content else ''
-                                    
-                                    # 如果content不是字符串或清理后的列表，转换为字符串
-                                    elif not isinstance(content, (str, list)):
-                                        content = str(content)
-                                    
-                                    # 只保留必要字段
-                                    cleaned_msg = {
-                                        'role': msg['role'],
-                                        'content': content
-                                    }
-                                    # 创建Message对象
-                                    try:
-                                        contexts.append(Message(**cleaned_msg))
-                                    except Exception as e:
-                                        self.logger.warning(f"[智能绘画] 创建Message对象失败，跳过该消息: {e}")
-                                else:
-                                    self.logger.warning(f"[智能绘画] 消息缺少必要字段(role/content): {msg}")
+                                    # 使用辅助方法清理content字段，确保格式符合OpenAI API要求
+                                    content = self.clean_message_content(msg['content'])
+                                      
+                                # 只保留必要字段
+                                cleaned_msg = {
+                                    'role': msg['role'],
+                                    'content': content
+                                }
+                                # 创建Message对象
+                                try:
+                                    contexts.append(Message(**cleaned_msg))
+                                except Exception as e:
+                                    self.logger.warning(f"[智能绘画] 创建Message对象失败，跳过该消息: {e}")
                             else:
-                                self.logger.warning(f"[智能绘画] 消息格式不是字典: {msg}")
+                                self.logger.warning(f"[智能绘画] 消息缺少必要字段(role/content): {msg}")
+                        else:
+                            self.logger.warning(f"[智能绘画] 消息格式不是字典: {msg}")
                         self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条有效消息")
                     except json.JSONDecodeError:
                         contexts = None
