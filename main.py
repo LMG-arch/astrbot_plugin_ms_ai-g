@@ -1177,6 +1177,14 @@ Return only the prompt, no additional explanation.
                                     # 根据OpenAI API要求，assistant消息不应该同时包含content和tool_calls
                                     if has_tool_calls:
                                         cleaned_msg['tool_calls'] = cleaned_tool_calls
+                                        # 添加到有效历史
+                                        if ((cleaned_msg.get('role') == 'assistant' and 
+                                            ('tool_calls' in cleaned_msg or 'content' in cleaned_msg)) or 
+                                           (cleaned_msg.get('role') == 'tool' and 
+                                            'content' in cleaned_msg and 'tool_call_id' in cleaned_msg) or 
+                                           (cleaned_msg.get('role') in ['user', 'system'] and 
+                                            'content' in cleaned_msg)):
+                                            valid_history.append(cleaned_msg)
                                     else:
                                         # 只有当没有tool_calls时，才添加content字段
                                         if 'content' in msg:
@@ -1217,6 +1225,14 @@ Return only the prompt, no additional explanation.
                                             # 既没有tool_calls也没有content，跳过
                                             self.logger.warning(f"[智能绘画] 跳过格式不合法的assistant消息(缺少content或tool_calls): {msg}")
                                             continue
+                                # 添加合法消息检查
+                                if ((cleaned_msg.get('role') == 'assistant' and 
+                                    ('tool_calls' in cleaned_msg or 'content' in cleaned_msg)) or 
+                                   (cleaned_msg.get('role') == 'tool' and 
+                                    'content' in cleaned_msg and 'tool_call_id' in cleaned_msg) or 
+                                   (cleaned_msg.get('role') in ['user', 'system'] and 
+                                    'content' in cleaned_msg)):
+                                    valid_history.append(cleaned_msg)
                                 elif msg['role'] == 'tool':
                                     # 只有当前面有包含tool_calls的assistant消息，且tool_call_id匹配时，才保留tool消息
                                     if has_tool_calls and 'tool_call_id' in msg and msg['tool_call_id'] in last_tool_calls_ids:
@@ -1256,7 +1272,14 @@ Return only the prompt, no additional explanation.
                                             'tool_call_id': msg['tool_call_id']
                                         }
                                         
-                                        valid_history.append(cleaned_msg)
+                                        # 只有合法的消息才能添加到有效历史
+                                        if ((cleaned_msg.get('role') == 'assistant' and 
+                                            ('tool_calls' in cleaned_msg or 'content' in cleaned_msg)) or 
+                                           (cleaned_msg.get('role') == 'tool' and 
+                                            'content' in cleaned_msg and 'tool_call_id' in cleaned_msg) or 
+                                           (cleaned_msg.get('role') in ['user', 'system'] and 
+                                            'content' in cleaned_msg)):
+                                            valid_history.append(cleaned_msg)
                                         # 重置tool_calls标记
                                         has_tool_calls = False
                                         last_tool_calls_ids = []
@@ -1314,7 +1337,8 @@ Return only the prompt, no additional explanation.
                                     
                                     cleaned_msg['content'] = content
                                 
-                                valid_history.append(cleaned_msg)
+                                # 普通消息已经在前面的处理中添加到valid_history
+                                # valid_history.append(cleaned_msg)
                             except Exception as e:
                                 self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
                         
