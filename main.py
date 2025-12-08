@@ -273,7 +273,7 @@ class ModFlux(Star):
         handler_metadata = star_handlers_registry.get_handler_by_full_name(handler_full_name)
         if handler_metadata:
             # 更新为绑定到当前实例的方法
-            handler_metadata.handler = self.on_message
+            handler_metadata.handler = self.on_message  # type: ignore
             self.logger.info(f"[ms_ai_g] 已将on_message方法更新为绑定版本")
         
         self.logger.info(f"[初始化] ModFlux插件初始化完成")
@@ -994,7 +994,7 @@ Return only the prompt, no additional explanation.
 
     
     @filter.event_message_type(filter.EventMessageType.ALL)
-    async def on_message(self, event: AstrMessageEvent, *args, **kwargs) -> Awaitable[Any]:
+    async def on_message(self, event: AstrMessageEvent, *args, **kwargs) -> AsyncGenerator[MessageEventResult, None]:
         """
         处理消息事件，用于智能绘画判断和对话
         
@@ -1035,11 +1035,44 @@ Return only the prompt, no additional explanation.
                         from astrbot.core.agent.message import Message
                         contexts = []
                         
-                        # 限制上下文长度，只保留最近的100条消息
+                        # 限制上下文长度，只保留最近的100条消息，同时确保不破坏工具调用链
                         max_history_length = 100
                         if len(history_list) > max_history_length:
-                            history_list = history_list[-max_history_length:]
-                            self.logger.info(f"[智能绘画] 对话历史过长，只保留最近 {max_history_length} 条消息")
+                            # 从最新的消息开始向前遍历
+                            truncated_list = []
+                            tool_call_chain = []
+                            count = 0
+                            
+                            # 首先收集最新的消息
+                            for msg in reversed(history_list):
+                                if count >= max_history_length:
+                                    break
+                                
+                                truncated_list.insert(0, msg)
+                                count += 1
+                                
+                                # 检查是否形成了一个完整的工具调用链
+                                if isinstance(msg, dict):
+                                    if msg.get('role') == 'tool':
+                                        # 记录tool消息
+                                        tool_call_chain.append(msg)
+                                    elif msg.get('role') == 'assistant' and 'tool_calls' in msg:
+                                        # 找到了对应的assistant消息，工具调用链完整
+                                        tool_call_chain = []
+                                    else:
+                                        # 其他消息，重置工具调用链
+                                        tool_call_chain = []
+                            
+                            # 如果最后有不完整的工具调用链，需要调整截取位置
+                            if tool_call_chain:
+                                # 移除不完整的工具调用链
+                                for msg in tool_call_chain:
+                                    if msg in truncated_list:
+                                        truncated_list.remove(msg)
+                                        self.logger.info("[智能绘画] 移除不完整的工具调用链消息")
+                            
+                            history_list = truncated_list
+                            self.logger.info(f"[智能绘画] 对话历史过长，只保留最近 {len(history_list)} 条有效消息")
                         
                         # 处理对话历史，确保tool消息有对应的assistant消息
                         valid_history = []
@@ -1119,8 +1152,6 @@ Return only the prompt, no additional explanation.
                         
                         # 创建Message对象
                         contexts = [Message(**msg) for msg in valid_history]
-                            except Exception as e:
-                                self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
                         
                         self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条有效消息")
                     except json.JSONDecodeError:
