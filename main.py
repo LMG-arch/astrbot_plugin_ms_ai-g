@@ -682,7 +682,8 @@ class ModFlux(Star):
                         # 确保image_url是正确的格式
                         image_url = part_dict['image_url']
                         if isinstance(image_url, dict) and 'url' in image_url:
-                            cleaned_content.append({'type': 'image_url', 'image_url': image_url})
+                            # 只保留OpenAI API要求的url字段
+                            cleaned_content.append({'type': 'image_url', 'image_url': {'url': image_url['url']}})
                         else:
                             self.logger.warning(f"[智能绘画] 无效的image_url格式: {image_url}")
                 # 处理字典类型的part
@@ -693,7 +694,8 @@ class ModFlux(Star):
                     elif part_type == 'image_url' and 'image_url' in part:
                         # 确保image_url是字典格式
                         if isinstance(part['image_url'], dict):
-                            cleaned_content.append(part)
+                            # 只保留OpenAI API要求的url字段
+                            cleaned_content.append({'type': 'image_url', 'image_url': {'url': part['image_url']['url']}})
                         elif isinstance(part['image_url'], str):
                             cleaned_content.append({'type': 'image_url', 'image_url': {'url': part['image_url']}})
                 # 跳过非字典和非ContentPart类型的内容部分
