@@ -1048,6 +1048,12 @@ Return only the prompt, no additional explanation.
                                         'content': content
                                     }
                                     
+                                    # 特殊处理assistant角色的消息
+                                    if msg['role'] == 'assistant':
+                                        # 保留tool_calls字段，用于后续tool消息的对应
+                                        if 'tool_calls' in msg:
+                                            cleaned_msg['tool_calls'] = msg['tool_calls']
+                                    
                                     # 特殊处理tool角色的消息
                                     if msg['role'] == 'tool':
                                         # OpenAI API要求tool消息必须有tool_call_id字段
