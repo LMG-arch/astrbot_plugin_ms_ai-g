@@ -668,11 +668,25 @@ class ModFlux(Star):
         if isinstance(content, dict):
             return content.get('message_str', str(content))
         
-        # 如果是列表，确保只包含有效的TextPart或ImageURLPart类型的字典
+        # 如果是列表，确保只包含有效的TextPart或ImageURLPart类型
         elif isinstance(content, list):
             cleaned_content = []
             for part in content:
-                if isinstance(part, dict):
+                # 处理ContentPart对象
+                if hasattr(part, 'model_dump'):
+                    part_dict = part.model_dump()
+                    # 检查是否是TextPart或ImageURLPart
+                    if part_dict.get('type') == 'text' and 'text' in part_dict:
+                        cleaned_content.append({'type': 'text', 'text': part_dict['text']})
+                    elif part_dict.get('type') == 'image_url' and 'image_url' in part_dict:
+                        # 确保image_url是正确的格式
+                        image_url = part_dict['image_url']
+                        if isinstance(image_url, dict) and 'url' in image_url:
+                            cleaned_content.append({'type': 'image_url', 'image_url': image_url})
+                        else:
+                            self.logger.warning(f"[智能绘画] 无效的image_url格式: {image_url}")
+                # 处理字典类型的part
+                elif isinstance(part, dict):
                     part_type = part.get('type')
                     if part_type == 'text' and 'text' in part:
                         cleaned_content.append({'type': 'text', 'text': part['text']})
@@ -682,7 +696,7 @@ class ModFlux(Star):
                             cleaned_content.append(part)
                         elif isinstance(part['image_url'], str):
                             cleaned_content.append({'type': 'image_url', 'image_url': {'url': part['image_url']}})
-                # 跳过非字典类型的内容部分
+                # 跳过非字典和非ContentPart类型的内容部分
             return cleaned_content if cleaned_content else ""
         
         # 其他类型转换为字符串
@@ -1177,7 +1191,7 @@ Return only the prompt, no additional explanation.
                                         self.logger.warning(f"[智能绘画] 跳过没有对应assistant消息的tool消息: {msg}")
                                         continue
                                 
-                                # 处理其他角色的消息
+                                # 处理其他角色的消息（user、system等）
                                 else:
                                     if 'content' not in msg:
                                         self.logger.warning(f"[智能绘画] 消息缺少必要字段(content): {msg}")
@@ -1186,6 +1200,7 @@ Return only the prompt, no additional explanation.
                                     # 清理content字段
                                     content = self.clean_message_content(msg['content'])
                                     
+                                    # 只保留必要的字段，确保符合OpenAI API要求
                                     cleaned_msg = {
                                         'role': msg['role'],
                                         'content': content
@@ -1198,8 +1213,8 @@ Return only the prompt, no additional explanation.
                             except Exception as e:
                                 self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
                         
-                        # 创建Message对象
-                        contexts = [Message(**msg) for msg in valid_history]
+                        # 直接使用清理后的字典列表，不需要转换为Message对象
+                        contexts = valid_history
                         
                         self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条有效消息")
                     except json.JSONDecodeError:
