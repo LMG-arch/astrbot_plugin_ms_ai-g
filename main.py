@@ -956,14 +956,40 @@ Return only the prompt, no additional explanation.
                         history_list = json.loads(conversation.history)
                         # 转换为 Message 对象列表
                         from astrbot.core.agent.message import Message
-                        contexts = [Message(**msg) for msg in history_list]
-                        self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条消息")
+                        contexts = []
+                        for msg in history_list:
+                            # 确保消息格式正确
+                            if isinstance(msg, dict):
+                                # 验证必要字段
+                                if 'role' in msg and 'content' in msg:
+                                    # 确保content是字符串类型
+                                    if isinstance(msg['content'], dict):
+                                        # 提取message_str作为content
+                                        content = msg['content'].get('message_str', '')
+                                        msg['content'] = content
+                                    elif not isinstance(msg['content'], (str, list)):
+                                        msg['content'] = str(msg['content'])
+                                    # 只保留必要字段
+                                    cleaned_msg = {
+                                        'role': msg['role'],
+                                        'content': msg['content']
+                                    }
+                                    # 创建Message对象
+                                    try:
+                                        contexts.append(Message(**cleaned_msg))
+                                    except Exception as e:
+                                        self.logger.warning(f"[智能绘画] 创建Message对象失败，跳过该消息: {e}")
+                                else:
+                                    self.logger.warning(f"[智能绘画] 消息缺少必要字段(role/content): {msg}")
+                            else:
+                                self.logger.warning(f"[智能绘画] 消息格式不是字典: {msg}")
+                        self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条有效消息")
                     except json.JSONDecodeError:
                         contexts = None
                         self.logger.error("[智能绘画] 对话历史解析失败")
                     except Exception as e:
                         contexts = None
-                        self.logger.error(f"[智能绘画] 转换对话历史为 Message 对象失败: {e}")
+                        self.logger.error(f"[智能绘画] 处理对话历史失败: {e}")
                 else:
                     contexts = None
                     self.logger.info("[智能绘画] 未获取到对话历史")
