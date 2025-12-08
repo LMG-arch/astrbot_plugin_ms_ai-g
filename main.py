@@ -1099,13 +1099,13 @@ Return only the prompt, no additional explanation.
                                     if 'tool_calls' in msg and msg['tool_calls']:
                                         has_tool_calls = True
                                         # 记录tool_calls中的id
-                                    last_tool_calls_ids = []
-                                    for tool_call in msg['tool_calls']:
-                                        if isinstance(tool_call, dict) and 'id' in tool_call:
-                                            last_tool_calls_ids.append(tool_call['id'])
-                                        elif hasattr(tool_call, 'id'):
-                                            # 类型检查：tool_call可能是对象类型
-                                            last_tool_calls_ids.append(getattr(tool_call, 'id'))
+                                        last_tool_calls_ids = []
+                                        for tool_call in msg['tool_calls']:
+                                            if isinstance(tool_call, dict) and 'id' in tool_call:
+                                                last_tool_calls_ids.append(tool_call['id'])
+                                            elif hasattr(tool_call, 'id'):
+                                                # 类型检查：tool_call可能是对象类型
+                                                last_tool_calls_ids.append(getattr(tool_call, 'id'))
                                     else:
                                         has_tool_calls = False
                                         last_tool_calls_ids = []
