@@ -665,20 +665,10 @@ class ModFlux(Star):
                 self.logger.info(f"[随机判断] 未触发绘画，概率: {paint_probability}")
                 return False
         
-        # LLM判断模式 - 使用专门的大模型进行判断
+        # LLM判断模式 - 使用AstrBot提供的统一大模型接口
         elif judge_mode == "llm":
             try:
-                # 获取专门的判断大模型配置
-                judge_llm_api_url = self.config.get("judge_llm_api_url", "")
-                judge_llm_api_key = self.config.get("judge_llm_api_key", "")
-                judge_llm_model = self.config.get("judge_llm_model", "gpt-3.5-turbo")
-                
-                # 检查必要的配置是否存在
-                if not judge_llm_api_url:
-                    self.logger.error("[智能判断] 未配置专门的判断大模型API地址")
-                    return False
-                
-                self.logger.info(f"[智能判断] 使用专门的大模型进行判断，模型: {judge_llm_model}")
+                self.logger.info("[智能判断] 使用AstrBot统一大模型接口进行判断")
                 
                 # 获取系统消息历史
                 try:
@@ -722,56 +712,60 @@ class ModFlux(Star):
 如果用户的消息中有绘画相关的请求，比如"画一张"、"生成图片"、"发张图"、"我要瞧瞧"、"我想看看"、"我想看"、"给我看"、"展示"等，或者用户询问"在干嘛"、"在做什么"、"你在干什么"、"你在做什么"、"你在忙什么"等关于当前活动的问题，就输出 "yes"，否则输出 "no"。
 """
                 
-                # 构建请求体
-                request_body = {
-                    "model": judge_llm_model,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "你是一个绘画请求判断专家，专门分析用户对话是否需要进行绘画生成。"
-                        },
-                        {
-                            "role": "user",
-                            "content": judge_prompt
-                        }
-                    ],
-                    "temperature": 0.1,
-                    "max_tokens": 10
-                }
-                
-                # 构建请求头
-                headers = {
-                    "Content-Type": "application/json"
-                }
-                
-                # 添加API密钥
-                if judge_llm_api_key:
-                    headers["Authorization"] = f"Bearer {judge_llm_api_key}"
-                
-                # 发送请求到专门的判断大模型
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(judge_llm_api_url, json=request_body, headers=headers) as response:
-                        if response.status == 200:
-                            result = await response.json()
-                            
-                            # 解析OpenAI格式的响应
-                            if "choices" in result and result["choices"]:
-                                judgment = result["choices"][0]["message"]["content"].strip().lower()
-                                self.logger.info(f"[智能判断] 专门大模型判断结果: {judgment}")
-                                return judgment == "yes"
-                            else:
-                                self.logger.error(f"[智能判断] 专门大模型响应格式错误: {result}")
-                                return False
+                # 使用AstrBot提供的统一大模型接口
+                try:
+                    umo = event.unified_msg_origin
+                    provider_id = await self.context.get_current_chat_provider_id(umo=umo)
+                    
+                    self.logger.info(f"[智能判断] 获取到当前会话的模型提供商: {provider_id}")
+                    
+                    llm_resp = await self.context.llm_generate(
+                        chat_provider_id=provider_id,
+                        prompt=judge_prompt
+                    )
+                    
+                    if llm_resp and llm_resp.completion_text:
+                        judgment = llm_resp.completion_text.strip().lower()
+                        self.logger.info(f"[智能判断] 大模型判断结果: {judgment}")
+                        return judgment == "yes"
+                    else:
+                        self.logger.error(f"[智能判断] 大模型响应为空: {llm_resp}")
+                        # 响应为空，回退到随机判断模式
+                        self.logger.info("[智能判断] 响应为空，回退到随机判断模式")
+                        paint_probability = self.config.get("paint_probability", 0.3)
+                        if random.random() < paint_probability:
+                            self.logger.info(f"[随机判断(回退)] 随机触发绘画，概率: {paint_probability}")
+                            return True
                         else:
-                            self.logger.error(f"[智能判断] 专门大模型请求失败，状态码: {response.status}, 响应: {await response.text()}")
+                            self.logger.info(f"[随机判断(回退)] 未触发绘画，概率: {paint_probability}")
                             return False
+                except Exception as e:
+                    self.logger.error(f"[智能判断] 使用AstrBot大模型接口时发生错误: {str(e)}")
+                    import traceback
+                    self.logger.error(traceback.format_exc())
+                    # 请求失败，回退到随机判断模式
+                    self.logger.info("[智能判断] 请求失败，回退到随机判断模式")
+                    paint_probability = self.config.get("paint_probability", 0.3)
+                    if random.random() < paint_probability:
+                        self.logger.info(f"[随机判断(回退)] 随机触发绘画，概率: {paint_probability}")
+                        return True
+                    else:
+                        self.logger.info(f"[随机判断(回退)] 未触发绘画，概率: {paint_probability}")
+                        return False
                     
             except Exception as e:
-                self.logger.error(f"[智能判断] 使用专门大模型进行判断时发生错误: {str(e)}")
+                self.logger.error(f"[智能判断] 使用大模型进行判断时发生错误: {str(e)}")
                 import traceback
                 self.logger.error(traceback.format_exc())
-                # 发生错误时，默认不进行绘画
-                return False
+                # 发生错误时，回退到随机判断模式
+                self.logger.info("[智能判断] 发生异常，回退到随机判断模式")
+                paint_probability = self.config.get("paint_probability", 0.3)
+                if random.random() < paint_probability:
+                    self.logger.info(f"[随机判断(回退)] 随机触发绘画，概率: {paint_probability}")
+                    return True
+                else:
+                    self.logger.info(f"[随机判断(回退)] 未触发绘画，概率: {paint_probability}")
+                    return False
         
         # 默认不进行绘画
         self.logger.info("[智能判断] 未触发绘画")
@@ -960,11 +954,16 @@ Return only the prompt, no additional explanation.
                     try:
                         # 将字符串格式的对话历史解析为列表
                         history_list = json.loads(conversation.history)
-                        contexts = history_list
+                        # 转换为 Message 对象列表
+                        from astrbot.core.agent.message import Message
+                        contexts = [Message(**msg) for msg in history_list]
                         self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条消息")
                     except json.JSONDecodeError:
                         contexts = None
                         self.logger.error("[智能绘画] 对话历史解析失败")
+                    except Exception as e:
+                        contexts = None
+                        self.logger.error(f"[智能绘画] 转换对话历史为 Message 对象失败: {e}")
                 else:
                     contexts = None
                     self.logger.info("[智能绘画] 未获取到对话历史")
