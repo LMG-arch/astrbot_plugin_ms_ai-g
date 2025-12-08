@@ -962,17 +962,45 @@ Return only the prompt, no additional explanation.
                             if isinstance(msg, dict):
                                 # 验证必要字段
                                 if 'role' in msg and 'content' in msg:
-                                    # 确保content是字符串类型
-                                    if isinstance(msg['content'], dict):
+                                    # 处理content字段，确保格式符合OpenAI API要求
+                                    content = msg['content']
+                                    
+                                    # 如果content是字典，提取message_str或转换为字符串
+                                    if isinstance(content, dict):
                                         # 提取message_str作为content
-                                        content = msg['content'].get('message_str', '')
-                                        msg['content'] = content
-                                    elif not isinstance(msg['content'], (str, list)):
-                                        msg['content'] = str(msg['content'])
+                                        content = content.get('message_str', '')
+                                    
+                                    # 如果content是列表，确保只包含TextPart或ImageURLPart类型的字典
+                                    elif isinstance(content, list):
+                                        cleaned_content = []
+                                        for part in content:
+                                            if isinstance(part, dict):
+                                                part_type = part.get('type')
+                                                if part_type == 'text' and 'text' in part:
+                                                    cleaned_content.append({'type': 'text', 'text': part['text']})
+                                                elif part_type == 'image_url' and 'image_url' in part:
+                                                    # 确保image_url是字典格式
+                                                    if isinstance(part['image_url'], dict):
+                                                        cleaned_content.append(part)
+                                                    elif isinstance(part['image_url'], str):
+                                                        cleaned_content.append({'type': 'image_url', 'image_url': {'url': part['image_url']}})
+                                                else:
+                                                    # 跳过不支持的内容类型
+                                                    self.logger.warning(f"[智能绘画] 跳过不支持的内容类型: {part}")
+                                            else:
+                                                # 跳过非字典类型的内容部分
+                                                self.logger.warning(f"[智能绘画] 跳过非字典类型的内容部分: {part}")
+                                        # 如果清理后的内容列表为空，使用空字符串
+                                        content = cleaned_content if cleaned_content else ''
+                                    
+                                    # 如果content不是字符串或清理后的列表，转换为字符串
+                                    elif not isinstance(content, (str, list)):
+                                        content = str(content)
+                                    
                                     # 只保留必要字段
                                     cleaned_msg = {
                                         'role': msg['role'],
-                                        'content': msg['content']
+                                        'content': content
                                     }
                                     # 创建Message对象
                                     try:
