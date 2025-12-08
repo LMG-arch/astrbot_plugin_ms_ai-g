@@ -1041,21 +1041,32 @@ Return only the prompt, no additional explanation.
                                 if 'role' in msg and 'content' in msg:
                                     # 使用辅助方法清理content字段，确保格式符合OpenAI API要求
                                     content = self.clean_message_content(msg['content'])
-                                      
-                                # 只保留必要字段
-                                cleaned_msg = {
-                                    'role': msg['role'],
-                                    'content': content
-                                }
-                                # 创建Message对象
-                                try:
-                                    contexts.append(Message(**cleaned_msg))
-                                except Exception as e:
-                                    self.logger.warning(f"[智能绘画] 创建Message对象失败，跳过该消息: {e}")
+                                    
+                                    # 只保留必要字段
+                                    cleaned_msg = {
+                                        'role': msg['role'],
+                                        'content': content
+                                    }
+                                    
+                                    # 特殊处理tool角色的消息
+                                    if msg['role'] == 'tool':
+                                        # OpenAI API要求tool消息必须有tool_call_id字段
+                                        if 'tool_call_id' in msg:
+                                            cleaned_msg['tool_call_id'] = msg['tool_call_id']
+                                        else:
+                                            # 如果缺少tool_call_id，跳过该消息
+                                            self.logger.warning(f"[智能绘画] 跳过缺少tool_call_id的tool消息: {msg}")
+                                            continue
+                                    
+                                    # 创建Message对象
+                                    try:
+                                        contexts.append(Message(**cleaned_msg))
+                                    except Exception as e:
+                                        self.logger.warning(f"[智能绘画] 创建Message对象失败，跳过该消息: {e}")
+                                else:
+                                    self.logger.warning(f"[智能绘画] 消息缺少必要字段(role/content): {msg}")
                             else:
-                                self.logger.warning(f"[智能绘画] 消息缺少必要字段(role/content): {msg}")
-                        else:
-                            self.logger.warning(f"[智能绘画] 消息格式不是字典: {msg}")
+                                self.logger.warning(f"[智能绘画] 消息格式不是字典: {msg}")
                         self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条有效消息")
                     except json.JSONDecodeError:
                         contexts = None
