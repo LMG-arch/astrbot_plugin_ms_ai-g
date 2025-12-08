@@ -1152,20 +1152,21 @@ Return only the prompt, no additional explanation.
                                             has_tool_calls = False
                                             last_tool_calls_ids = []
                                     
-                                        # 清理content字段
-                                        content = self.clean_message_content(msg['content']) if 'content' in msg else None
-                                    
                                         cleaned_msg = {
-                                            'role': msg['role'],
-                                            'content': content
-                                        }
+                                        'role': msg['role']
+                                    }
                                     
-                                        # 保留tool_calls字段
-                                        if has_tool_calls:
-                                            cleaned_msg['tool_calls'] = cleaned_tool_calls
+                                    # 根据OpenAI API要求，assistant消息不应该同时包含content和tool_calls
+                                    if has_tool_calls:
+                                        cleaned_msg['tool_calls'] = cleaned_tool_calls
+                                    else:
+                                        # 只有当没有tool_calls时，才添加content字段
+                                        content = self.clean_message_content(msg['content']) if 'content' in msg else None
+                                        cleaned_msg['content'] = content
                                     
                                     # 确保assistant消息有合法格式（content或tool_calls至少有一个）
-                                    if msg['role'] == 'assistant' and not cleaned_msg['content'] and not has_tool_calls:
+                                    has_content = 'content' in cleaned_msg and cleaned_msg['content']
+                                    if msg['role'] == 'assistant' and not has_content and not has_tool_calls:
                                         # 如果assistant消息既没有content也没有tool_calls，跳过该消息
                                         self.logger.warning(f"[智能绘画] 跳过格式不合法的assistant消息: {msg}")
                                         continue
@@ -1201,6 +1202,18 @@ Return only the prompt, no additional explanation.
                                     
                                     # 清理content字段
                                     content = self.clean_message_content(msg['content'])
+                                    
+                                    # 根据OpenAI API要求，只有user消息可以包含多模态内容（content是列表）
+                                    if msg['role'] != 'user' and isinstance(content, list):
+                                        # 将多模态内容转换为字符串
+                                        content_str = ""
+                                        for part in content:
+                                            if isinstance(part, dict):
+                                                if part.get('type') == 'text' and 'text' in part:
+                                                    content_str += part['text']
+                                                elif part.get('type') == 'image_url':
+                                                    content_str += "[图片]"
+                                        content = content_str if content_str else ""
                                     
                                     # 只保留必要的字段，确保符合OpenAI API要求
                                     cleaned_msg = {
