@@ -1048,7 +1048,7 @@ Return only the prompt, no additional explanation.
                                 if count >= max_history_length:
                                     break
                                 
-                                truncated_list.insert(0, msg)
+                                truncated_list.append(msg)
                                 count += 1
                                 
                                 # 检查是否形成了一个完整的工具调用链
@@ -1056,7 +1056,7 @@ Return only the prompt, no additional explanation.
                                     if msg.get('role') == 'tool':
                                         # 记录tool消息
                                         tool_call_chain.append(msg)
-                                    elif msg.get('role') == 'assistant' and 'tool_calls' in msg:
+                                    elif msg.get('role') == 'assistant' and 'tool_calls' in msg and msg['tool_calls']:
                                         # 找到了对应的assistant消息，工具调用链完整
                                         tool_call_chain = []
                                     else:
@@ -1071,12 +1071,15 @@ Return only the prompt, no additional explanation.
                                         truncated_list.remove(msg)
                                         self.logger.info("[智能绘画] 移除不完整的工具调用链消息")
                             
+                            # 恢复原来的顺序
+                            truncated_list.reverse()
                             history_list = truncated_list
                             self.logger.info(f"[智能绘画] 对话历史过长，只保留最近 {len(history_list)} 条有效消息")
                         
                         # 处理对话历史，确保tool消息有对应的assistant消息
                         valid_history = []
                         has_tool_calls = False
+                        last_tool_calls_ids = []
                         
                         for msg in history_list:
                             try:
@@ -1093,8 +1096,19 @@ Return only the prompt, no additional explanation.
                                 # 处理assistant消息
                                 if msg['role'] == 'assistant':
                                     # 检查是否有tool_calls
-                                    if 'tool_calls' in msg:
+                                    if 'tool_calls' in msg and msg['tool_calls']:
                                         has_tool_calls = True
+                                        # 记录tool_calls中的id
+                                    last_tool_calls_ids = []
+                                    for tool_call in msg['tool_calls']:
+                                        if isinstance(tool_call, dict) and 'id' in tool_call:
+                                            last_tool_calls_ids.append(tool_call['id'])
+                                        elif hasattr(tool_call, 'id'):
+                                            # 类型检查：tool_call可能是对象类型
+                                            last_tool_calls_ids.append(getattr(tool_call, 'id'))
+                                    else:
+                                        has_tool_calls = False
+                                        last_tool_calls_ids = []
                                     
                                     # 清理content字段
                                     content = self.clean_message_content(msg['content']) if 'content' in msg else None
@@ -1112,8 +1126,8 @@ Return only the prompt, no additional explanation.
                                 
                                 # 处理tool消息
                                 elif msg['role'] == 'tool':
-                                    # 只有当前面有包含tool_calls的assistant消息时，才保留tool消息
-                                    if has_tool_calls and 'tool_call_id' in msg:
+                                    # 只有当前面有包含tool_calls的assistant消息，且tool_call_id匹配时，才保留tool消息
+                                    if has_tool_calls and 'tool_call_id' in msg and msg['tool_call_id'] in last_tool_calls_ids:
                                         # 清理content字段
                                         content = self.clean_message_content(msg['content']) if 'content' in msg else None
                                         
@@ -1126,6 +1140,7 @@ Return only the prompt, no additional explanation.
                                         valid_history.append(cleaned_msg)
                                         # 重置tool_calls标记
                                         has_tool_calls = False
+                                        last_tool_calls_ids = []
                                     else:
                                         self.logger.warning(f"[智能绘画] 跳过没有对应assistant消息的tool消息: {msg}")
                                         continue
@@ -1147,6 +1162,7 @@ Return only the prompt, no additional explanation.
                                     valid_history.append(cleaned_msg)
                                     # 重置tool_calls标记
                                     has_tool_calls = False
+                                    last_tool_calls_ids = []
                             except Exception as e:
                                 self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
                         
