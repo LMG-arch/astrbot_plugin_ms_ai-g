@@ -1097,15 +1097,41 @@ Return only the prompt, no additional explanation.
                                 if msg['role'] == 'assistant':
                                     # 检查是否有tool_calls
                                     if 'tool_calls' in msg and msg['tool_calls']:
+                                    # 验证并清理tool_calls
+                                    cleaned_tool_calls = []
+                                    valid_tool_calls = False
+                                    
+                                    for tool_call in msg['tool_calls']:
+                                        # 确保tool_call是字典类型
+                                        if not isinstance(tool_call, dict):
+                                            self.logger.warning(f"[智能绘画] tool_call不是字典类型: {tool_call}")
+                                            continue
+                                        
+                                        # 验证必要字段
+                                        if 'id' not in tool_call:
+                                            self.logger.warning(f"[智能绘画] tool_call缺少id字段: {tool_call}")
+                                            continue
+                                        
+                                        if 'type' not in tool_call or tool_call['type'] != 'function':
+                                            self.logger.warning(f"[智能绘画] tool_call类型不是function: {tool_call}")
+                                            continue
+                                        
+                                        if 'function' not in tool_call or not isinstance(tool_call['function'], dict):
+                                            self.logger.warning(f"[智能绘画] tool_call缺少function字段或格式不正确: {tool_call}")
+                                            continue
+                                        
+                                        if 'name' not in tool_call['function']:
+                                            self.logger.warning(f"[智能绘画] tool_call的function缺少name字段: {tool_call}")
+                                            continue
+                                        
+                                        # 添加到清理后的tool_calls列表
+                                        cleaned_tool_calls.append(tool_call)
+                                        valid_tool_calls = True
+                                    
+                                    if valid_tool_calls:
                                         has_tool_calls = True
                                         # 记录tool_calls中的id
-                                        last_tool_calls_ids = []
-                                        for tool_call in msg['tool_calls']:
-                                            if isinstance(tool_call, dict) and 'id' in tool_call:
-                                                last_tool_calls_ids.append(tool_call['id'])
-                                            elif hasattr(tool_call, 'id'):
-                                                # 类型检查：tool_call可能是对象类型
-                                                last_tool_calls_ids.append(getattr(tool_call, 'id'))
+                                        last_tool_calls_ids = [tc['id'] for tc in cleaned_tool_calls]
                                     else:
                                         has_tool_calls = False
                                         last_tool_calls_ids = []
@@ -1120,7 +1146,13 @@ Return only the prompt, no additional explanation.
                                     
                                     # 保留tool_calls字段
                                     if has_tool_calls:
-                                        cleaned_msg['tool_calls'] = msg['tool_calls']
+                                        cleaned_msg['tool_calls'] = cleaned_tool_calls
+                                    
+                                    # 确保assistant消息有合法格式（content或tool_calls至少有一个）
+                                    if msg['role'] == 'assistant' and not cleaned_msg['content'] and not has_tool_calls:
+                                        # 如果assistant消息既没有content也没有tool_calls，跳过该消息
+                                        self.logger.warning(f"[智能绘画] 跳过格式不合法的assistant消息: {msg}")
+                                        continue
                                     
                                     valid_history.append(cleaned_msg)
                                 
