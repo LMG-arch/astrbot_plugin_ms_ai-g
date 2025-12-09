@@ -1,11 +1,5 @@
 [
   {
-    "user_id": "astrbot",
-    "user_message": "在干嘛",
-    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765158306_229ba567.jpg",
-    "timestamp": 1765158307.2138524
-  },
-  {
     "user_id": "8249303DE98A5A06E1BC64D51EC0905F",
     "user_message": "在干嘛",
     "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765158357_428f4f23.jpg",
@@ -58,5 +52,11 @@
     "user_message": "在干嘛",
     "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765162869_0a7b977e.jpg",
     "timestamp": 1765162873.6267684
+  },
+  {
+    "user_id": "astrbot",
+    "user_message": "在干嘛",
+    "bot_response": "已生成图片: C:\\Users\\21641\\AppData\\Local\\Temp\\astrbot_images\\img_1765254984_ef5de713.jpg",
+    "timestamp": 1765254985.6752925
   }
 ]

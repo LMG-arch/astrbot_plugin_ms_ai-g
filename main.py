@@ -260,6 +260,12 @@ class ModFlux(Star):
         
         self.logger.info(f"[配置更新] 配置更新完成，当前配置项数: {len(self.config)}")
 
+    def _provider_supports_multimodal(self, provider_id: str) -> bool:
+        pid = (provider_id or "").lower()
+        if "deepseek" in pid:
+            return False
+        return True
+
     async def initialize(self):
         # 解决参数不匹配问题：将注册表中的未绑定函数更新为绑定方法
         from astrbot.core.star.star_handler import star_handlers_registry
@@ -1037,6 +1043,7 @@ Return only the prompt, no additional explanation.
             # 1. 获取当前会话使用的聊天模型 ID
             umo = event.unified_msg_origin
             provider_id = await self.context.get_current_chat_provider_id(umo=umo)
+            supports_mm = self._provider_supports_multimodal(provider_id)
             
             # 2. 获取当前会话的对话历史
             conv_mgr = self.context.conversation_manager
@@ -1177,14 +1184,6 @@ Return only the prompt, no additional explanation.
                                     # 根据OpenAI API要求，assistant消息不应该同时包含content和tool_calls
                                     if has_tool_calls:
                                         cleaned_msg['tool_calls'] = cleaned_tool_calls
-                                        # 添加到有效历史
-                                        if ((cleaned_msg.get('role') == 'assistant' and 
-                                            ('tool_calls' in cleaned_msg or 'content' in cleaned_msg)) or 
-                                           (cleaned_msg.get('role') == 'tool' and 
-                                            'content' in cleaned_msg and 'tool_call_id' in cleaned_msg) or 
-                                           (cleaned_msg.get('role') in ['user', 'system'] and 
-                                            'content' in cleaned_msg)):
-                                            valid_history.append(cleaned_msg)
                                     else:
                                         # 只有当没有tool_calls时，才添加content字段
                                         if 'content' in msg:
@@ -1307,27 +1306,28 @@ Return only the prompt, no additional explanation.
                                         self.logger.warning(f"[智能绘画] 清理后content为None: {msg}")
                                         continue
                                     
-                                    # 根据OpenAI API要求，只有user消息可以包含多模态内容（content是列表）
-                                    if msg['role'] != 'user' and isinstance(content, list):
-                                        # 将多模态内容转换为字符串
-                                        content_str = ""
-                                        for part in content:
-                                            if isinstance(part, dict):
-                                                if part.get('type') == 'text' and 'text' in part:
-                                                    content_str += part['text']
-                                                elif part.get('type') == 'image_url':
-                                                    content_str += "[图片]"
-                                        content = content_str
-                                        
-                                        # 确保转换后content不为空
-                                        if not content:
-                                            self.logger.warning(f"[智能绘画] 多模态内容转换后为空: {msg}")
-                                            continue
+                                    if isinstance(content, list):
+                                        if msg['role'] == 'user' and supports_mm:
+                                            pass
+                                        else:
+                                            content_str = ""
+                                            for part in content:
+                                                if isinstance(part, dict):
+                                                    if part.get('type') == 'text' and 'text' in part:
+                                                        content_str += part['text']
+                                                    elif part.get('type') == 'image_url':
+                                                        content_str += "[图片]"
+                                            content = content_str
+                                            if not content:
+                                                self.logger.warning(f"[智能绘画] 多模态内容转换后为空: {msg}")
+                                                continue
                                     
                                     # 对于单模态内容，确保不为空字符串
                                     elif isinstance(content, str) and not content:
                                         self.logger.warning(f"[智能绘画] 消息content为空字符串: {msg}")
                                         continue
+                                    
+                                    cleaned_msg['content'] = content
                                     
                                     # 确保消息role合法
                                     valid_roles = ['system', 'user', 'assistant', 'tool']
@@ -1335,10 +1335,14 @@ Return only the prompt, no additional explanation.
                                         self.logger.warning(f"[智能绘画] 消息角色不合法: {msg['role']}")
                                         continue
                                     
-                                    cleaned_msg['content'] = content
-                                
-                                # 普通消息已经在前面的处理中添加到valid_history
-                                # valid_history.append(cleaned_msg)
+                                    # 添加合法消息检查
+                                    if ((cleaned_msg.get('role') == 'assistant' and 
+                                        ('tool_calls' in cleaned_msg or 'content' in cleaned_msg)) or 
+                                       (cleaned_msg.get('role') == 'tool' and 
+                                        'content' in cleaned_msg and 'tool_call_id' in cleaned_msg) or 
+                                       (cleaned_msg.get('role') in ['user', 'system'] and 
+                                        'content' in cleaned_msg)):
+                                        valid_history.append(cleaned_msg)
                             except Exception as e:
                                 self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
                         
