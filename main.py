@@ -1303,6 +1303,9 @@ Return only the prompt, no additional explanation.
                                     # 根据OpenAI API要求，assistant消息不应该同时包含content和tool_calls
                                     if has_tool_calls:
                                         cleaned_msg['tool_calls'] = cleaned_tool_calls
+                                        # 确保assistant消息同时有tool_calls时不包含content
+                                        if 'content' in cleaned_msg:
+                                            del cleaned_msg['content']
                                     else:
                                         # 只有当没有tool_calls时，才添加content字段
                                         if 'content' in msg:
