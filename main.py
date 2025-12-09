@@ -25,6 +25,7 @@ from astrbot.api.star import Star, register
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.platform import Platform
 from astrbot.api import AstrBotConfig
+from astrbot.core.agent.message import Message, TextPart, ImageURLPart
 
 
 @register("ms_ai-g", "AI绘画插件", "基于魔搭社区的AI绘画生成插件", "2.0")
@@ -1013,6 +1014,47 @@ Return only the prompt, no additional explanation.
             self.logger.error(traceback.format_exc())
             return message
     
+    def _estimate_tokens(self, text: str) -> int:
+        """估算文本的 token 数量（简化版本）"""
+        if not text:
+            return 0
+        # 简单的估算：中文字符按 2 token，英文按 1 token，标点符号按 1 token
+        chinese_chars = len([c for c in text if '\u4e00' <= c <= '\u9fff'])
+        english_words = len(text.encode('utf-8').decode('utf-8').split())
+        # 粗略估算：总 token = 中文字符 * 2 + 英文单词 * 1 + 其他字符 * 0.5
+        return int(chinese_chars * 2 + english_words * 1 + (len(text) - chinese_chars - english_words) * 0.5)
+    
+    def _estimate_message_tokens(self, message: Dict) -> int:
+        """估算单个消息的 token 数量"""
+        total_tokens = 0
+        
+        # 角色字段的 token
+        role = message.get('role', '')
+        total_tokens += self._estimate_tokens(role)
+        
+        # 内容字段的 token
+        content = message.get('content', '')
+        if isinstance(content, str):
+            total_tokens += self._estimate_tokens(content)
+        elif isinstance(content, list):
+            # 处理内容列表（如图片消息等）
+            for item in content:
+                if isinstance(item, dict) and 'text' in item:
+                    total_tokens += self._estimate_tokens(item['text'])
+                elif isinstance(item, str):
+                    total_tokens += self._estimate_tokens(item)
+        
+        # tool_calls 的 token 估算
+        if message.get('tool_calls'):
+            for tool_call in message['tool_calls']:
+                if isinstance(tool_call, dict):
+                    total_tokens += self._estimate_tokens(str(tool_call.get('function', {})))
+        
+        # 添加消息结构的基础 token（约 4-5 个）
+        total_tokens += 4
+        
+        return total_tokens
+
     def _sanitize_contexts(self, contexts: List[Dict]) -> List[Dict]:
         """
         清洗上下文，确保符合 DeepSeek/OpenAI API 的严格要求：
@@ -1020,22 +1062,31 @@ Return only the prompt, no additional explanation.
         2. User 和 Assistant 必须交替出现
         3. 消息内容不能为空
         4. 移除开头的非 User/System 消息（例如孤立的 Assistant 消息）
+        5. 控制总 token 数量不超过 30000（为 32768 限制留有余地）
         """
         if not contexts:
             return []
         
         sanitized = []
+        total_tokens = 0
+        MAX_TOKENS = 30000  # 为 32768 限制留有余地
         
         # 1. 提取 System 消息
         system_msgs = [msg for msg in contexts if msg.get('role') == 'system']
         if system_msgs:
             # 只保留第一个 System 消息
-            sanitized.append(system_msgs[0])
-            
-        # 2. 处理非 System 消息
+            system_msg = system_msgs[0]
+            system_tokens = self._estimate_message_tokens(system_msg)
+            if system_tokens <= MAX_TOKENS:
+                sanitized.append(system_msg)
+                total_tokens += system_tokens
+        
+        # 2. 处理非 System 消息（从最新消息开始，向前截断）
         other_msgs = [msg for msg in contexts if msg.get('role') != 'system']
         
-        for msg in other_msgs:
+        # 从最新消息开始处理，确保保留最近的对话
+        valid_msgs = []
+        for msg in reversed(other_msgs):  # 从最新消息开始
             role = msg.get('role')
             content = msg.get('content')
             
@@ -1047,15 +1098,14 @@ Return only the prompt, no additional explanation.
             elif not content:
                 continue # 跳过空消息
             
-            # 这里的逻辑主要是为了修复连续的角色消息
-            if not sanitized:
-                # 如果 sanitized 只有 System 或者为空
-                # 第一条非 System 消息必须是 User (对于 DeepSeek)
+            # 检查角色交替
+            if not valid_msgs:
+                # 第一条消息必须是 User (对于 DeepSeek)
                 if role != 'user':
                     continue
-                sanitized.append(msg)
+                valid_msgs.append(msg)
             else:
-                last_msg = sanitized[-1]
+                last_msg = valid_msgs[-1]
                 last_role = last_msg.get('role')
                 
                 if role == last_role:
@@ -1063,13 +1113,25 @@ Return only the prompt, no additional explanation.
                     if role in ['user', 'assistant'] and not msg.get('tool_calls') and not last_msg.get('tool_calls'):
                         if isinstance(last_msg.get('content'), str) and isinstance(content, str):
                             last_msg['content'] += "\n" + content
-                    # 如果不能合并（例如有 tool_calls），则忽略当前消息，或者保留（但这会导致 API 错误）
-                    # 为了稳健性，这里选择忽略当前消息以避免 20015 错误
+                    # 如果不能合并，则忽略当前消息
                     continue
                 
                 # 正常交替
-                sanitized.append(msg)
-                
+                valid_msgs.append(msg)
+        
+        # 3. 按 token 数量截断，保留最新消息
+        for msg in reversed(valid_msgs):  # 转回正序
+            msg_tokens = self._estimate_message_tokens(msg)
+            
+            # 检查添加此消息后是否超出限制
+            if total_tokens + msg_tokens > MAX_TOKENS:
+                self.logger.info(f"[智能绘画] 上下文截断：当前 {total_tokens} tokens，添加消息需要 {msg_tokens} tokens，超出 {MAX_TOKENS} 限制")
+                break
+            
+            sanitized.append(msg)
+            total_tokens += msg_tokens
+        
+        self.logger.info(f"[智能绘画] 上下文清洗完成，最终包含 {len(sanitized)} 条消息，总 token 数约 {total_tokens}")
         return sanitized
 
     @filter.event_message_type(filter.EventMessageType.ALL)
@@ -1408,7 +1470,75 @@ Return only the prompt, no additional explanation.
                         
                         # 将字典列表转换为 Message 对象列表
                         if sanitized_contexts_dicts:
-                            contexts = [Message(**msg) for msg in sanitized_contexts_dicts]
+                            contexts = []
+                            for msg_dict in sanitized_contexts_dicts:
+                                try:
+                                    # 确保 role 字段有效
+                                    role = msg_dict.get('role')
+                                    if role not in ['system', 'user', 'assistant', 'tool']:
+                                        self.logger.warning(f"[智能绘画] 无效的角色: {role}, 跳过该消息")
+                                        continue
+                                    
+                                    # 确保 content 字段格式正确
+                                    content = msg_dict.get('content')
+                                    cleaned_content = None
+                                    
+                                    if isinstance(content, str) or content is None:
+                                        # 字符串或 None 直接传递
+                                        cleaned_content = content
+                                    elif isinstance(content, list):
+                                        # 列表需要检查每个元素
+                                        cleaned_content = []
+                                        for part in content:
+                                            if isinstance(part, dict) and 'type' in part:
+                                                part_type = part.get('type')
+                                                if part_type == 'text' and 'text' in part:
+                                                    cleaned_content.append(TextPart(text=part['text']))
+                                                elif part_type == 'image_url' and 'image_url' in part:
+                                                    image_url = part['image_url']
+                                                    if isinstance(image_url, dict) and 'url' in image_url:
+                                                        cleaned_content.append(ImageURLPart(image_url=ImageURLPart.ImageURL(url=image_url['url'])))
+                                                    elif isinstance(image_url, str):
+                                                        cleaned_content.append(ImageURLPart(image_url=ImageURLPart.ImageURL(url=image_url)))
+                                                else:
+                                                    self.logger.warning(f"[智能绘画] 未知的内容部分类型: {part_type}")
+                                            else:
+                                                self.logger.warning(f"[智能绘画] 无效的内容部分格式: {part}")
+                                    else:
+                                        # 其他类型转换为字符串
+                                        cleaned_content = str(content)
+                                    
+                                    # 处理 tool_calls
+                                    tool_calls = msg_dict.get('tool_calls')
+                                    if tool_calls is not None and not isinstance(tool_calls, list):
+                                        tool_calls = None
+                                        self.logger.warning(f"[智能绘画] tool_calls 格式无效，已设置为 None")
+                                    
+                                    # 处理 tool_call_id
+                                    tool_call_id = msg_dict.get('tool_call_id')
+                                    if tool_call_id is not None and not isinstance(tool_call_id, str):
+                                        tool_call_id = None
+                                        self.logger.warning(f"[智能绘画] tool_call_id 格式无效，已设置为 None")
+                                    
+                                    # 验证 content 要求：除非是 assistant 角色且有 tool_calls，否则 content 不能为空
+                                    if role != 'assistant' or tool_calls is None:
+                                        if cleaned_content is None or (isinstance(cleaned_content, str) and not cleaned_content.strip()):
+                                            self.logger.warning(f"[智能绘画] content 为空的非 assistant 消息，跳过该消息: role={role}")
+                                            continue
+                                    
+                                    # 创建 Message 对象
+                                    message_obj = Message(
+                                        role=role,
+                                        content=cleaned_content,
+                                        tool_calls=tool_calls,
+                                        tool_call_id=tool_call_id
+                                    )
+                                    contexts.append(message_obj)
+                                    self.logger.debug(f"[智能绘画] 成功创建 Message 对象: role={role}, content_type={type(cleaned_content)}")
+                                    
+                                except Exception as e:
+                                    self.logger.warning(f"[智能绘画] 创建 Message 对象失败，跳过该消息: {e}, 消息内容: {msg_dict}")
+                                    continue
                         else:
                             contexts = None
                         
