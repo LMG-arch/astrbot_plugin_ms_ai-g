@@ -1013,8 +1013,65 @@ Return only the prompt, no additional explanation.
             self.logger.error(traceback.format_exc())
             return message
     
+    def _sanitize_contexts(self, contexts: List[Dict]) -> List[Dict]:
+        """
+        清洗上下文，确保符合 DeepSeek/OpenAI API 的严格要求：
+        1. System 消息只能在第一条
+        2. User 和 Assistant 必须交替出现
+        3. 消息内容不能为空
+        4. 移除开头的非 User/System 消息（例如孤立的 Assistant 消息）
+        """
+        if not contexts:
+            return []
+        
+        sanitized = []
+        
+        # 1. 提取 System 消息
+        system_msgs = [msg for msg in contexts if msg.get('role') == 'system']
+        if system_msgs:
+            # 只保留第一个 System 消息
+            sanitized.append(system_msgs[0])
+            
+        # 2. 处理非 System 消息
+        other_msgs = [msg for msg in contexts if msg.get('role') != 'system']
+        
+        for msg in other_msgs:
+            role = msg.get('role')
+            content = msg.get('content')
+            
+            # 检查内容有效性
+            if role == 'assistant' and msg.get('tool_calls'):
+                pass # 允许 content 为空
+            elif role == 'tool':
+                pass # tool 消息通常有 content
+            elif not content:
+                continue # 跳过空消息
+            
+            # 这里的逻辑主要是为了修复连续的角色消息
+            if not sanitized:
+                # 如果 sanitized 只有 System 或者为空
+                # 第一条非 System 消息必须是 User (对于 DeepSeek)
+                if role != 'user':
+                    continue
+                sanitized.append(msg)
+            else:
+                last_msg = sanitized[-1]
+                last_role = last_msg.get('role')
+                
+                if role == last_role:
+                    # 连续相同角色，尝试合并内容
+                    if role in ['user', 'assistant'] and not msg.get('tool_calls') and not last_msg.get('tool_calls'):
+                        if isinstance(last_msg.get('content'), str) and isinstance(content, str):
+                            last_msg['content'] += "\n" + content
+                    # 如果不能合并（例如有 tool_calls），则忽略当前消息，或者保留（但这会导致 API 错误）
+                    # 为了稳健性，这里选择忽略当前消息以避免 20015 错误
+                    continue
+                
+                # 正常交替
+                sanitized.append(msg)
+                
+        return sanitized
 
-    
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent, *args, **kwargs) -> AsyncGenerator[MessageEventResult, None]:
         """
@@ -1346,10 +1403,16 @@ Return only the prompt, no additional explanation.
                             except Exception as e:
                                 self.logger.warning(f"[智能绘画] 处理消息失败，跳过该消息: {e}")
                         
-                        # 直接使用清理后的字典列表，不需要转换为Message对象
-                        contexts = valid_history
+                        # 清理上下文
+                        sanitized_contexts_dicts = self._sanitize_contexts(valid_history)
                         
-                        self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts)} 条有效消息")
+                        # 将字典列表转换为 Message 对象列表
+                        if sanitized_contexts_dicts:
+                            contexts = [Message(**msg) for msg in sanitized_contexts_dicts]
+                        else:
+                            contexts = None
+                        
+                        self.logger.info(f"[智能绘画] 获取到对话历史，共 {len(contexts) if contexts else 0} 条有效消息")
                     except json.JSONDecodeError:
                         contexts = None
                         self.logger.error("[智能绘画] 对话历史解析失败")
